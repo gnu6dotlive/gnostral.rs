@@ -15,9 +15,10 @@ to the inventory). `git apply --check` against that tree passes.
 | --- | --- | --- |
 | `0001-mistralrs-strata-grouped-executor-q026-q029.patch` | `3b950fb6...d88642` | Grouped executor in `residency.rs`, `forward_with` from `backends.rs`, optional deps on `gnostral-moe-exec` and `gnostral-cpu-kernels` under the existing `gnostral-expert-residency` feature, parity tests |
 | `0002-mistralrs-strata-trace-cpu-optin-capture-q042-q030-q031.patch` | `988cc52c...7220d4` | On top of `0001`: Q-042 timers (`gnostral-trace` feature, `GNOSTRAL_TRACE=1`, reset after the warmup dummy run), the all-CPU residency opt-in `GNOSTRAL_EXPERT_RESIDENCY_CPU=1`, and the `gnostral_capture` example (Q-030 captures + `GNOSTRAL_METRICS` for Q-031) |
+| `0003-mistralrs-strata-expert-demand-profile-q027.patch` | `43db8ef6...7a0532` | On top of `0002`: `GNOSTRAL_EXPERT_PROFILE_OUT=path` records routed demand per expert and writes a profile in the exact schema `GNOSTRAL_EXPERT_PROFILE` loads (ranked by observed routes) plus `path.demand.json` with the counts; written atomically every 256 layer forwards and on drain |
 | `candle-strata-public-reconstruction.BUILD-ONLY.patch` | `f9549036...98e7b` | **Not for the lab.** Lets the public candle `35d7ae7` stand in for the unpublished lab candle-strata (`f0f334aa`): reconstructed `expert_slice_to`, the Q-010 `cpu_expert_matmul_k`, `cuda_allocation_bytes`, and load-refusing Bonsai PQ2_0/PTQ1_0 stubs |
 
-The lab tree already carries the real candle-strata; apply `0001` then `0002` there, not the BUILD-ONLY patch.
+The lab tree already carries the real candle-strata; apply `0001`, `0002`, `0003` in order there, not the BUILD-ONLY patch.
 
 ## Runtime selection (same binary, A/B by environment)
 
@@ -28,6 +29,7 @@ The lab tree already carries the real candle-strata; apply `0001` then `0002` th
 | `GNOSTRAL_MOE_GPU_ROWS` | `per-row`, `batched` | `per-row` |
 | `GNOSTRAL_EXPERT_RESIDENCY_CPU` | `1` | unset (pilot stays CUDA-only) |
 | `GNOSTRAL_TRACE` (needs feature `gnostral-trace`) | `1` | unset; `GNOSTRAL_TRACE_OUT` names the receipt |
+| `GNOSTRAL_EXPERT_PROFILE_OUT` | path | unset (no demand recording) |
 
 - `grouped` builds one plan per layer: GPU groups are enqueued first, host groups run while the device
   works, one synchronisation collects device results, and the scatter-add follows the per-route
@@ -62,6 +64,13 @@ GGUF load, residency and sampling path:
   fails strict parity, exactly as the rules require.
 - The upstream CPU MoE path (no residency) dequantises the expert stacks to F32 per call and keeps
   F32 activations, so it is not token-identical to the Q8_K residency path (12/32 on this fixture).
+
+Recording a profile for a real model: run the frozen workload with residency enabled and an
+empty-ranking input profile (budget `1`, so every expert runs on the host), with
+`GNOSTRAL_EXPERT_PROFILE_OUT` set; the written file is directly loadable as
+`GNOSTRAL_EXPERT_PROFILE` with the real budget. On the synthetic fixture: 2,048 layer forwards, 32
+experts ranked, the recorded profile reloaded by the engine. If the process exits abruptly the
+profile reflects demand up to the last multiple of 256 forwards.
 
 ## Not verified
 

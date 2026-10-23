@@ -1,0 +1,220 @@
+From: Jordan <dev.in@gnu6.live>
+Subject: [PATCH 0003] record observed expert demand as a loadable residency profile (Q-027)
+
+Applies on top of 0001 and 0002. See patches/engine-program/README.md.
+
+---
+diff --git a/mistralrs-core/src/models/qwen3_moe.rs b/mistralrs-core/src/models/qwen3_moe.rs
+index 1cd46bb..ed3989f 100644
+--- a/mistralrs-core/src/models/qwen3_moe.rs
++++ b/mistralrs-core/src/models/qwen3_moe.rs
+@@ -11,7 +11,9 @@ use serde::{Deserialize, Serialize};
+ use std::{collections::HashMap, sync::Arc};
+ 
+ #[cfg(feature = "gnostral-expert-residency")]
+-use crate::moe::{ExpertResidencyRequest, ExpertResidencyRuntime, CPU_RESIDENCY_ENV};
++use crate::moe::{
++    ExpertResidencyRequest, ExpertResidencyRuntime, CPU_RESIDENCY_ENV, PROFILE_OUT_ENV,
++};
+ use crate::moe::{MoEExperts, MoEExpertsConfig};
+ use crate::{
+     amoe::AnyMoeBaseModelMixin,
+@@ -644,12 +646,16 @@ impl Model {
+                 .map_err(|_| candle_core::Error::Msg("layer count overflow".into()))?;
+             let experts = u32::try_from(cfg.num_experts)
+                 .map_err(|_| candle_core::Error::Msg("expert count overflow".into()))?;
+-            Some(Arc::new(ExpertResidencyRuntime::new(
++            let mut runtime = ExpertResidencyRuntime::new(
+                 request.validate(&hash, layers, experts)?,
+                 layers,
+                 experts,
+                 normal_loading_metadata.real_device.clone(),
+-            )?))
++            )?;
++            if let Some(path) = std::env::var_os(PROFILE_OUT_ENV) {
++                runtime = runtime.with_profile_out(path.into(), hash.clone());
++            }
++            Some(Arc::new(runtime))
+         } else {
+             None
+         };
+diff --git a/mistralrs-core/src/moe/experts/residency.rs b/mistralrs-core/src/moe/experts/residency.rs
+index 05bef62..e4f59ed 100644
+--- a/mistralrs-core/src/moe/experts/residency.rs
++++ b/mistralrs-core/src/moe/experts/residency.rs
+@@ -101,6 +101,10 @@ use std::{
+ pub(crate) const EXECUTOR_ENV: &str = "GNOSTRAL_MOE_EXECUTOR";
+ pub(crate) const CPU_KERNEL_ENV: &str = "GNOSTRAL_CPU_EXPERT_KERNEL";
+ pub(crate) const GPU_ROWS_ENV: &str = "GNOSTRAL_MOE_GPU_ROWS";
++/// When set, observed expert demand is written there as a loadable profile when the runtime drains.
++pub(crate) const PROFILE_OUT_ENV: &str = "GNOSTRAL_EXPERT_PROFILE_OUT";
++/// The recorded profile is rewritten every this many layer forwards, so it survives an abrupt exit.
++const PROFILE_WRITE_EVERY: u64 = 256;
+ /// Opt-in for the all-CPU residency path (no device slots); otherwise the pilot is CUDA-only.
+ pub(crate) const CPU_RESIDENCY_ENV: &str = "GNOSTRAL_EXPERT_RESIDENCY_CPU";
+ 
+@@ -308,6 +312,8 @@ struct RuntimeState {
+     allocated_bytes: u64,
+     observation: ResidencyCounters,
+     released: bool,
++    demand: BTreeMap<ExpertKey, u64>,
++    forwards: u64,
+ }
+ /// Model-scoped owner; one admission plan and one byte budget across every layer.
+ pub(crate) struct ExpertResidencyRuntime {
+@@ -317,6 +323,7 @@ pub(crate) struct ExpertResidencyRuntime {
+     experts: u32,
+     device: Device,
+     state: Mutex<RuntimeState>,
++    profile_out: Option<(std::path::PathBuf, String)>,
+ }
+ impl ExpertResidencyRuntime {
+     pub(crate) fn new(
+@@ -342,9 +349,56 @@ impl ExpertResidencyRuntime {
+                 allocated_bytes: 0,
+                 observation: ResidencyCounters::default(),
+                 released: false,
++                demand: BTreeMap::new(),
++                forwards: 0,
+             }),
++            profile_out: None,
+         })
+     }
++    /// Record routed demand and write it to `path` as a profile for `model_sha256` on drain.
++    pub(crate) fn with_profile_out(
++        mut self,
++        path: std::path::PathBuf,
++        model_sha256: String,
++    ) -> Self {
++        self.profile_out = Some((path, model_sha256));
++        self
++    }
++    fn write_profile(&self, state: &RuntimeState) -> Result<()> {
++        let Some((path, model_sha256)) = &self.profile_out else {
++            return Ok(());
++        };
++        let mut ranked: Vec<(&ExpertKey, &u64)> = state.demand.iter().collect();
++        ranked.sort_by(|a, b| b.1.cmp(a.1).then(a.0.cmp(b.0)));
++        let profile = serde_json::json!({
++            "schema": 1,
++            "model_sha256": model_sha256,
++            "layers": self.layers,
++            "experts_per_layer": self.experts,
++            "ranking": ranked
++                .iter()
++                .map(|(k, _)| serde_json::json!({"layer": k.layer, "expert": k.expert}))
++                .collect::<Vec<_>>(),
++        });
++        let counts = serde_json::json!({
++            "schema": "gnostral.expert-demand/1",
++            "model_sha256": model_sha256,
++            "forwards": state.forwards,
++            "routes": ranked
++                .iter()
++                .map(|(k, n)| serde_json::json!({"layer": k.layer, "expert": k.expert, "routes": n}))
++                .collect::<Vec<_>>(),
++        });
++        // Write then rename so a reader never sees a truncated profile.
++        let write = |p: &std::path::Path, v: &serde_json::Value| {
++            let tmp = p.with_extension("tmp");
++            std::fs::write(&tmp, v.to_string())
++                .and_then(|()| std::fs::rename(&tmp, p))
++                .map_err(|e| error(&format!("cannot write {}: {e}", p.display())))
++        };
++        write(path, &profile)?;
++        write(&path.with_extension("demand.json"), &counts)
++    }
+     #[cfg(test)]
+     pub(super) fn set_executor(&mut self, executor: ExecutorConfig) {
+         self.executor = executor;
+@@ -557,6 +611,9 @@ impl ExpertResidencyRuntime {
+         }
+         // Hold all projection Arcs until synchronization confirms owned CUDA work finished.
+         self.device.synchronize()?;
++        if let Err(e) = self.write_profile(&state) {
++            tracing::error!(%e, "expert demand profile not written");
++        }
+         if let Some(table) = state.table.as_mut() {
+             table.close().map_err(residency_error)?;
+         }
+@@ -624,6 +681,17 @@ impl ExpertResidencyRuntime {
+         state
+             .observation
+             .route(partition.gpu.len(), partition.cpu.len())?;
++        if self.profile_out.is_some() {
++            state.forwards += 1;
++            for r in routes {
++                *state.demand.entry(r.key).or_insert(0) += 1;
++            }
++            if state.forwards % PROFILE_WRITE_EVERY == 0 {
++                if let Err(e) = self.write_profile(&state) {
++                    tracing::error!(%e, "expert demand profile not written");
++                }
++            }
++        }
+         let compute = match self.executor.mode {
+             ExecutorMode::PerRoute => {
+                 self.compute_per_route(&state.resident, &host, xs, routes, &activation)
+diff --git a/mistralrs-core/src/moe/experts/residency_tests.rs b/mistralrs-core/src/moe/experts/residency_tests.rs
+index d0464ed..3c3e1f5 100644
+--- a/mistralrs-core/src/moe/experts/residency_tests.rs
++++ b/mistralrs-core/src/moe/experts/residency_tests.rs
+@@ -549,3 +549,47 @@ fn executor_configuration_is_explicit() -> candle_core::Result<()> {
+     assert!(ExecutorConfig::from_values(Some("per-route"), Some("gnostral"), None).is_err());
+     Ok(())
+ }
++
++#[test]
++fn recorded_demand_is_a_loadable_profile_ranked_by_routes() -> candle_core::Result<()> {
++    let dir = std::env::temp_dir().join(format!("gnostral-profile-{}", std::process::id()));
++    std::fs::create_dir_all(&dir).map_err(candle_core::Error::wrap)?;
++    let path = dir.join("profile.json");
++    let runtime = ExpertResidencyRuntime::new(
++        ExpertResidencyConfig {
++            budget_bytes: 0,
++            profile: vec![],
++        },
++        1,
++        3,
++        Device::Cpu,
++    )?
++    .with_profile_out(path.clone(), HASH.to_string());
++    runtime.register(0, projections()?)?;
++    runtime.finish_loading()?;
++    let xs = Tensor::ones((2, 256), DType::F32, &Device::Cpu)?;
++    // routes(): expert 1 twice, expert 0 once.
++    runtime.forward(0, &xs, &routes(), |x| x.silu())?;
++    runtime.drain_and_release()?;
++    let text = std::fs::read_to_string(&path).map_err(candle_core::Error::wrap)?;
++    let loaded = ExpertResidencyConfig::from_values(Some("1"), Some(&text), HASH, 1, 3)?
++        .expect("nonzero budget");
++    assert_eq!(
++        loaded.profile,
++        vec![
++            ExpertKey {
++                layer: 0,
++                expert: 1
++            },
++            ExpertKey {
++                layer: 0,
++                expert: 0
++            }
++        ]
++    );
++    let demand = std::fs::read_to_string(path.with_extension("demand.json"))
++        .map_err(candle_core::Error::wrap)?;
++    assert!(demand.contains("\"routes\":2"));
++    let _ = std::fs::remove_dir_all(&dir);
++    Ok(())
++}
+diff --git a/mistralrs-core/src/moe/mod.rs b/mistralrs-core/src/moe/mod.rs
+index 2303ae8..b611fb7 100644
+--- a/mistralrs-core/src/moe/mod.rs
++++ b/mistralrs-core/src/moe/mod.rs
+@@ -15,5 +15,5 @@ pub fn shard(dim: usize, rank: usize, world_size: usize) -> Shard {
+ 
+ #[cfg(feature = "gnostral-expert-residency")]
+ pub(crate) use experts::residency::{
+-    ExpertResidencyRequest, ExpertResidencyRuntime, CPU_RESIDENCY_ENV,
++    ExpertResidencyRequest, ExpertResidencyRuntime, CPU_RESIDENCY_ENV, PROFILE_OUT_ENV,
+ };
