@@ -201,14 +201,17 @@ impl<'c> Recorder<'c> {
         let attributed: u64 = phases.iter().filter_map(|p| p.total_ns).sum();
         let mut sorted = self.spans.clone();
         sorted.sort_by_key(|s| (s.start_ns, s.end_ns));
-        let overlap_ns: u64 = sorted
-            .windows(2)
-            .map(|w| {
-                w[0].end_ns
-                    .saturating_sub(w[1].start_ns)
-                    .min(w[1].end_ns - w[1].start_ns)
-            })
-            .sum();
+        // Covered time is the union of all spans; nested or overlapping spans are counted once.
+        let mut covered_ns = 0u64;
+        let mut cursor = 0u64;
+        for s in &sorted {
+            let from = s.start_ns.max(cursor);
+            if s.end_ns > from {
+                covered_ns += s.end_ns - from;
+            }
+            cursor = cursor.max(s.end_ns);
+        }
+        let overlap_ns = attributed - covered_ns;
         Timeline {
             identity,
             clock: self.clock.source(),
@@ -216,7 +219,7 @@ impl<'c> Recorder<'c> {
             wall_ns,
             phases,
             attributed_ns: attributed,
-            unknown_ns: wall_ns.map(|w| w.saturating_sub(attributed - overlap_ns.min(attributed))),
+            unknown_ns: wall_ns.map(|w| w.saturating_sub(covered_ns)),
             overlap_ns,
             dropped_spans: self.dropped,
             spans: self.spans.clone(),

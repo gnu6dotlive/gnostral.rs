@@ -116,3 +116,26 @@ fn overhead_is_measured_on_the_real_clock() {
         .to_json()
         .contains(&format!("\"overhead_ns_per_span\":{ns}")));
 }
+
+#[test]
+fn several_spans_nested_in_one_span_are_counted_once() {
+    let clock = ManualClock::default();
+    let mut r = Recorder::new(&clock, true, 8);
+    r.begin_request();
+    let forward = r.start();
+    for _ in 0..2 {
+        clock.advance(10);
+        let inner = r.start();
+        clock.advance(20);
+        r.stop(Phase::CpuExpert, inner);
+    }
+    clock.advance(10);
+    r.stop(Phase::Forward, forward);
+    clock.advance(7);
+    r.end_request();
+    let t = r.timeline(identity());
+    assert_eq!(t.wall_ns, Some(77));
+    assert_eq!(t.attributed_ns, 70 + 40);
+    assert_eq!(t.overlap_ns, 40);
+    assert_eq!(t.unknown_ns, Some(7));
+}

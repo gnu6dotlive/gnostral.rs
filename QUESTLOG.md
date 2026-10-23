@@ -86,7 +86,7 @@ DeepInfer/provider follow-ons; Q-013-D→Q-016 remain the supervisor gates.
 | Q-039 | [SLO-SCHED-01](quests/Q-039-SLO-SCHED-01.md) | PROPOSED | Deadline/priority admission, fairness receipt, C1/C4 tails; feeds Q-016; policy and simulation landed offline |
 | Q-040 | [MULTI-ENGINE-01](quests/Q-040-MULTI-ENGINE-01.md) | PROPOSED | Three engines behind one supervisor, per-engine profiles, no capability inheritance; supervisor landed against stubs |
 | Q-041 | [DESKTOP-RESERVE-01](quests/Q-041-DESKTOP-RESERVE-01.md) | PROPOSED | Elastic VRAM reserve with a desktop-pressure observer; `NO_XID` gate; state machine landed offline |
-| Q-042 | [PROFILE-SPARK-01](quests/Q-042-PROFILE-SPARK-01.md) | PROPOSED | Per-phase timers behind a flag; single-request timeline exported as evidence; timer crate landed, not wired |
+| Q-042 | [PROFILE-SPARK-01](quests/Q-042-PROFILE-SPARK-01.md) | PROPOSED | Per-phase timers behind a flag; single-request timeline exported as evidence; timers wired in the engine (patch 0002), token-neutral on the synthetic fixture, no real profile |
 
 **Current program state (head of `feat/engine-program`, after the `v0.9.0-rc1` tag):** offline,
 CPU-only pieces exist for Q-026, Q-027, Q-028, Q-029, Q-030, Q-031, Q-038, Q-039, Q-040, Q-041 and

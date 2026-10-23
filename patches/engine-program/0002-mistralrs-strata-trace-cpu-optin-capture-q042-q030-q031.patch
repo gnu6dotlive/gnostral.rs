@@ -1,0 +1,545 @@
+From: Jordan <dev.in@gnu6.live>
+Subject: [PATCH 0002] Q-042 timers, CPU residency opt-in and gnostral_capture (engine program)
+
+Applies on top of 0001. See patches/engine-program/README.md.
+
+---
+diff --git a/mistralrs-core/Cargo.toml b/mistralrs-core/Cargo.toml
+index 8e5a001..7d4b1a6 100644
+--- a/mistralrs-core/Cargo.toml
++++ b/mistralrs-core/Cargo.toml
+@@ -16,6 +16,7 @@ homepage.workspace = true
+ gnostral-expert-residency = { path = "../../../crates/gnostral-expert-residency", optional = true }
+ gnostral-moe-exec = { path = "../../../crates/gnostral-moe-exec", optional = true }
+ gnostral-cpu-kernels = { path = "../../../crates/gnostral-cpu-kernels", optional = true }
++gnostral-trace = { path = "../../../crates/gnostral-trace", optional = true }
+ anyhow.workspace = true
+ candle-core.workspace = true
+ metrics.workspace = true
+@@ -127,6 +128,7 @@ gnostral-expert-residency = [
+     "dep:gnostral-moe-exec",
+     "dep:gnostral-cpu-kernels",
+ ]
++gnostral-trace = ["dep:gnostral-trace"]
+ pyo3_macros = ["pyo3", "mistralrs-mcp/pyo3_macros"]
+ cuda = [
+     "candle-core/cuda",
+diff --git a/mistralrs-core/src/engine/mod.rs b/mistralrs-core/src/engine/mod.rs
+index 681f9db..19089e0 100644
+--- a/mistralrs-core/src/engine/mod.rs
++++ b/mistralrs-core/src/engine/mod.rs
+@@ -1234,6 +1234,7 @@ impl Engine {
+                 (scheduler.waiting_len(), scheduler.running_len())
+             };
+             let scheduler_idle = waiting_len == 0 && running_len == 0;
++            crate::gnostral_trace::request_boundary(!scheduler_idle || decode_batch_leased);
+ 
+             if scheduler_idle {
+                 if !pending.is_empty() {
+@@ -1392,7 +1393,9 @@ impl Engine {
+             self.free_finished_scheduler_sequences(&mut *scheduler);
+             #[cfg(feature = "cuda")]
+             scheduler.set_waiting_prompt_preemption_enabled(waiting_prompt_preemption_enabled);
++            let schedule_span = crate::gnostral_trace::start();
+             let scheduled = scheduler.schedule(&self.logger, prefix_validator);
++            crate::gnostral_trace::stop(crate::gnostral_trace::Phase::Schedule, schedule_span);
+             self.prune_revoked_paged_recurrent_prefixes();
+ 
+             match scheduled {
+diff --git a/mistralrs-core/src/gnostral_trace.rs b/mistralrs-core/src/gnostral_trace.rs
+new file mode 100644
+index 0000000..3341fa5
+--- /dev/null
++++ b/mistralrs-core/src/gnostral_trace.rs
+@@ -0,0 +1,137 @@
++//! Q-042 per-phase timers. Off unless built with `gnostral-trace` and run with `GNOSTRAL_TRACE=1`.
++
++pub(crate) use imp::*;
++
++#[cfg(feature = "gnostral-trace")]
++mod imp {
++    pub(crate) use gnostral_trace::Phase;
++    use gnostral_trace::{measure_overhead, Identity, MonotonicClock, Recorder, TRACE_ENV};
++    use std::sync::{Mutex, OnceLock};
++
++    const OUT_ENV: &str = "GNOSTRAL_TRACE_OUT";
++    const DEFAULT_OUT: &str = "gnostral-trace.json";
++    const BINARY_SHA_ENV: &str = "GNOSTRAL_TRACE_BINARY_SHA256";
++    const MODEL_SHA_ENV: &str = "GNOSTRAL_TRACE_MODEL_SHA256";
++    const SPAN_CAPACITY: usize = 1 << 18;
++    const OVERHEAD_SPANS: usize = 10_000;
++
++    struct State {
++        clock: &'static MonotonicClock,
++        rec: Recorder<'static>,
++        begun: bool,
++        done: bool,
++    }
++
++    static STATE: OnceLock<Option<Mutex<State>>> = OnceLock::new();
++
++    fn state() -> Option<&'static Mutex<State>> {
++        STATE
++            .get_or_init(|| {
++                if std::env::var(TRACE_ENV).ok().as_deref() != Some("1") {
++                    return None;
++                }
++                let clock: &'static MonotonicClock = Box::leak(Box::default());
++                Some(Mutex::new(State {
++                    clock,
++                    rec: Recorder::new(clock, true, SPAN_CAPACITY),
++                    begun: false,
++                    done: false,
++                }))
++            })
++            .as_ref()
++    }
++
++    #[inline]
++    pub(crate) fn start() -> Option<u64> {
++        let guard = state()?.lock().ok()?;
++        (guard.begun && !guard.done).then(|| guard.rec.start())
++    }
++
++    #[inline]
++    pub(crate) fn stop(phase: Phase, start: Option<u64>) {
++        let (Some(start), Some(state)) = (start, state()) else {
++            return;
++        };
++        if let Ok(mut guard) = state.lock() {
++            if !guard.done {
++                guard.rec.stop(phase, start);
++            }
++        }
++    }
++
++    /// Stop recording until [`reset`] (used around the engine's warmup dummy run).
++    pub(crate) fn pause() {
++        if let Some(Ok(mut guard)) = state().map(Mutex::lock) {
++            guard.done = true;
++        }
++    }
++
++    /// Forget everything recorded so far; the next busy period starts a fresh timeline.
++    pub(crate) fn reset() {
++        if let Some(Ok(mut guard)) = state().map(Mutex::lock) {
++            let clock = guard.clock;
++            guard.rec = Recorder::new(clock, true, SPAN_CAPACITY);
++            guard.begun = false;
++            guard.done = false;
++        }
++    }
++
++    /// Called once per engine loop iteration: the first busy iteration starts the timeline,
++    /// the first idle one after it ends the timeline and writes the receipt.
++    pub(crate) fn request_boundary(busy: bool) {
++        let Some(state) = state() else {
++            return;
++        };
++        let Ok(mut guard) = state.lock() else {
++            return;
++        };
++        if busy && !guard.begun {
++            guard.rec.begin_request();
++            guard.begun = true;
++        } else if !busy && guard.begun && !guard.done {
++            guard.rec.end_request();
++            guard.done = true;
++            let identity = Identity {
++                binary_sha256: std::env::var(BINARY_SHA_ENV).ok(),
++                model_sha256: std::env::var(MODEL_SHA_ENV).ok(),
++                command: std::env::args().collect::<Vec<_>>().join(" "),
++            };
++            let mut timeline = guard.rec.timeline(identity);
++            timeline.overhead_ns_per_span = Some(measure_overhead(guard.clock, OVERHEAD_SPANS));
++            let out = std::env::var(OUT_ENV).unwrap_or_else(|_| DEFAULT_OUT.to_string());
++            match std::fs::write(&out, timeline.to_json()) {
++                Ok(()) => tracing::info!("gnostral trace written to {out}\n{}", timeline.summary()),
++                Err(e) => tracing::error!("cannot write gnostral trace {out}: {e}"),
++            }
++        }
++    }
++}
++
++#[cfg(not(feature = "gnostral-trace"))]
++mod imp {
++    #[derive(Clone, Copy)]
++    pub(crate) enum Phase {
++        Schedule,
++        Forward,
++        #[cfg_attr(not(feature = "gnostral-expert-residency"), allow(dead_code))]
++        CpuExpert,
++        Sample,
++    }
++
++    #[inline(always)]
++    pub(crate) fn start() -> Option<u64> {
++        None
++    }
++
++    #[inline(always)]
++    pub(crate) fn stop(_phase: Phase, _start: Option<u64>) {}
++
++    #[inline(always)]
++    pub(crate) fn request_boundary(_busy: bool) {}
++
++    #[inline(always)]
++    pub(crate) fn pause() {}
++
++    #[inline(always)]
++    pub(crate) fn reset() {}
++}
+diff --git a/mistralrs-core/src/lib.rs b/mistralrs-core/src/lib.rs
+index 7a77193..187d72c 100644
+--- a/mistralrs-core/src/lib.rs
++++ b/mistralrs-core/src/lib.rs
+@@ -83,6 +83,7 @@ pub mod distributed;
+ pub mod files;
+ mod gdn;
+ mod gguf;
++mod gnostral_trace;
+ pub mod layers;
+ mod layers_masker;
+ mod layers_utils;
+@@ -1675,6 +1676,7 @@ impl MistralRs {
+                     input_files: Vec::new(),
+                 }));
+                 debug!("Beginning dummy run.");
++                crate::gnostral_trace::pause();
+                 let start = Instant::now();
+                 clone_sender.blocking_send(req).unwrap();
+ 
+@@ -1697,6 +1699,7 @@ impl MistralRs {
+ 
+             // Reset logger counters so the dummy run doesn't pollute stats
+             engine_instance.logger.reset();
++            crate::gnostral_trace::reset();
+         }
+ 
+         // Create engines map with the first engine
+diff --git a/mistralrs-core/src/models/qwen3_moe.rs b/mistralrs-core/src/models/qwen3_moe.rs
+index 85dba0e..1cd46bb 100644
+--- a/mistralrs-core/src/models/qwen3_moe.rs
++++ b/mistralrs-core/src/models/qwen3_moe.rs
+@@ -11,7 +11,7 @@ use serde::{Deserialize, Serialize};
+ use std::{collections::HashMap, sync::Arc};
+ 
+ #[cfg(feature = "gnostral-expert-residency")]
+-use crate::moe::{ExpertResidencyRequest, ExpertResidencyRuntime};
++use crate::moe::{ExpertResidencyRequest, ExpertResidencyRuntime, CPU_RESIDENCY_ENV};
+ use crate::moe::{MoEExperts, MoEExpertsConfig};
+ use crate::{
+     amoe::AnyMoeBaseModelMixin,
+@@ -621,13 +621,15 @@ impl Model {
+         #[cfg(feature = "gnostral-expert-residency")]
+         let residency = if let Some(request) = ExpertResidencyRequest::from_environment()? {
+             use sha2::{Digest, Sha256};
+-            if !normal_loading_metadata.real_device.is_cuda()
++            let cpu_opt_in = std::env::var(CPU_RESIDENCY_ENV).is_ok_and(|v| v == "1");
++            let device = &normal_loading_metadata.real_device;
++            if !(device.is_cuda() || (device.is_cpu() && cpu_opt_in))
+                 || normal_loading_metadata.loading_isq
+                 || cfg.decoder_sparse_step != 1
+                 || !cfg.mlp_only_layers.is_empty()
+                 || cfg.quantization_config.is_some()
+             {
+-                candle_core::bail!("native residency pilot requires unsharded CUDA Qwen3 GGUF with every layer using standard experts");
++                candle_core::bail!("native residency pilot requires unsharded CUDA (or GNOSTRAL_EXPERT_RESIDENCY_CPU=1 on CPU) Qwen3 GGUF with every layer using standard experts");
+             }
+             let source = vb_m.weight_source().ok_or_else(|| {
+                 candle_core::Error::Msg("native residency requires GGUF source identity".into())
+diff --git a/mistralrs-core/src/moe/experts/residency.rs b/mistralrs-core/src/moe/experts/residency.rs
+index 17fbc0c..05bef62 100644
+--- a/mistralrs-core/src/moe/experts/residency.rs
++++ b/mistralrs-core/src/moe/experts/residency.rs
+@@ -101,6 +101,8 @@ use std::{
+ pub(crate) const EXECUTOR_ENV: &str = "GNOSTRAL_MOE_EXECUTOR";
+ pub(crate) const CPU_KERNEL_ENV: &str = "GNOSTRAL_CPU_EXPERT_KERNEL";
+ pub(crate) const GPU_ROWS_ENV: &str = "GNOSTRAL_MOE_GPU_ROWS";
++/// Opt-in for the all-CPU residency path (no device slots); otherwise the pilot is CUDA-only.
++pub(crate) const CPU_RESIDENCY_ENV: &str = "GNOSTRAL_EXPERT_RESIDENCY_CPU";
+ 
+ /// Per-route loop (the Q-009/Q-010 path) or one plan per layer with grouped execution.
+ #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+@@ -572,6 +574,7 @@ impl ExpertResidencyRuntime {
+     pub(super) fn is_resident(&self, key: ExpertKey) -> Result<bool> {
+         Ok(self.state()?.resident.contains_key(&key))
+     }
++    #[cfg(test)]
+     pub(super) fn forward(
+         &self,
+         layer: u32,
+@@ -780,6 +783,7 @@ impl ExpertResidencyRuntime {
+             }
+             (CpuKernel::Candle, _) => None,
+         };
++        let cpu_span = crate::gnostral_trace::start();
+         if let Some(act) = gnostral.filter(|_| !host_groups.is_empty()) {
+             let outputs = gnostral_host_ffn(host, &host_groups, hidden, act)?;
+             for (group, out) in host_groups.iter().zip(outputs) {
+@@ -795,6 +799,8 @@ impl ExpertResidencyRuntime {
+             }
+         }
+ 
++        crate::gnostral_trace::stop(crate::gnostral_trace::Phase::CpuExpert, cpu_span);
++
+         if !device_parts.is_empty() {
+             let joined = Tensor::cat(&device_parts, 0)?
+                 .to_device(&Device::Cpu)?
+diff --git a/mistralrs-core/src/moe/mod.rs b/mistralrs-core/src/moe/mod.rs
+index d15fc92..2303ae8 100644
+--- a/mistralrs-core/src/moe/mod.rs
++++ b/mistralrs-core/src/moe/mod.rs
+@@ -14,4 +14,6 @@ pub fn shard(dim: usize, rank: usize, world_size: usize) -> Shard {
+ }
+ 
+ #[cfg(feature = "gnostral-expert-residency")]
+-pub(crate) use experts::residency::{ExpertResidencyRequest, ExpertResidencyRuntime};
++pub(crate) use experts::residency::{
++    ExpertResidencyRequest, ExpertResidencyRuntime, CPU_RESIDENCY_ENV,
++};
+diff --git a/mistralrs-core/src/pipeline/mod.rs b/mistralrs-core/src/pipeline/mod.rs
+index ad4ebc4..2b7de91 100644
+--- a/mistralrs-core/src/pipeline/mod.rs
++++ b/mistralrs-core/src/pipeline/mod.rs
+@@ -2068,9 +2068,11 @@ pub trait Pipeline:
+                             && sampling::can_sample_batch_cuda(input_seqs))
+                             || crate::speculative::verifier::can_batch_device_verify(input_seqs));
+                     let start = Instant::now();
++                    let forward_span = crate::gnostral_trace::start();
+                     let raw_logits = self
+                         .forward_inputs(inputs, return_raw_logits)?
+                         .into_cpu_for_batch(input_seqs.len(), preserve_causal_generation)?;
++                    crate::gnostral_trace::stop(crate::gnostral_trace::Phase::Forward, forward_span);
+                     let end = Instant::now();
+                     exec_duration += end.duration_since(start);
+ 
+@@ -2177,6 +2179,7 @@ pub trait Pipeline:
+                                 )
+                                 .await?
+                         {
++                            let sample_span = crate::gnostral_trace::start();
+                             self.sample_causal_gen(
+                                 input_seqs,
+                                 logits,
+@@ -2185,6 +2188,10 @@ pub trait Pipeline:
+                                 rng,
+                             )
+                             .await?;
++                            crate::gnostral_trace::stop(
++                                crate::gnostral_trace::Phase::Sample,
++                                sample_span,
++                            );
+                         }
+                     }
+                     ForwardInputsResult::Image { .. } => {
+@@ -2595,6 +2602,7 @@ pub trait Pipeline:
+                             hybrid_cache.install_sequence_state_indices(&sequence_slots)?;
+                         }
+                         let start = Instant::now();
++                        let forward_span = crate::gnostral_trace::start();
+                         #[cfg(feature = "cuda")]
+                         let forward = if cuda_decode_lookahead {
+                             self.forward_step(inputs, return_raw_logits)?
+@@ -2622,6 +2630,10 @@ pub trait Pipeline:
+                         for (seq_idx, end) in computed_updates {
+                             input_seqs[seq_idx].set_num_computed_tokens(end);
+                         }
++                        crate::gnostral_trace::stop(
++                            crate::gnostral_trace::Phase::Forward,
++                            forward_span,
++                        );
+                         let end = Instant::now();
+                         exec_duration += end.duration_since(start);
+ 
+@@ -2823,6 +2835,7 @@ pub trait Pipeline:
+                             )
+                             .await?
+                         {
++                            let sample_span = crate::gnostral_trace::start();
+                             self.sample_causal_gen(
+                                 input_seqs,
+                                 logits,
+@@ -2831,6 +2844,10 @@ pub trait Pipeline:
+                                 rng,
+                             )
+                             .await?;
++                            crate::gnostral_trace::stop(
++                                crate::gnostral_trace::Phase::Sample,
++                                sample_span,
++                            );
+                         }
+                     }
+                     ForwardInputsResult::Image { .. } => {
+diff --git a/mistralrs/Cargo.toml b/mistralrs/Cargo.toml
+index ca7e41e..e7f0f32 100644
+--- a/mistralrs/Cargo.toml
++++ b/mistralrs/Cargo.toml
+@@ -57,6 +57,10 @@ path = "examples/getting_started/gguf/main.rs"
+ name = "gguf_locally"
+ path = "examples/getting_started/gguf_locally/main.rs"
+ 
++[[example]]
++name = "gnostral_capture"
++path = "examples/gnostral_capture/main.rs"
++
+ [[example]]
+ name = "embedding"
+ path = "examples/getting_started/embedding/main.rs"
+@@ -278,6 +282,9 @@ path = "examples/cookbook/agent/main.rs"
+ no-default-features = true
+ 
+ [features]
++# gnostral engine program: grouped MoE residency executor and per-phase trace
++gnostral-expert-residency = ["mistralrs-core/gnostral-expert-residency"]
++gnostral-trace = ["mistralrs-core/gnostral-trace"]
+ # NVIDIA CUDA GPU support
+ cuda = ["mistralrs-core/cuda"]
+ cutile = ["cuda", "mistralrs-core/cutile"]
+diff --git a/mistralrs/examples/gnostral_capture/main.rs b/mistralrs/examples/gnostral_capture/main.rs
+new file mode 100644
+index 0000000..ed59909
+--- /dev/null
++++ b/mistralrs/examples/gnostral_capture/main.rs
+@@ -0,0 +1,141 @@
++//! Greedy token capture for the gnostral quality oracle (Q-030) and lane driver (Q-031).
++//!
++//! Run with:
++//! `cargo run --release --example gnostral_capture -p mistralrs --features gnostral-expert-residency -- \
++//!   --model-dir DIR --file MODEL.gguf --manifest PROMPTS.json --promptset-sha256 HASH \
++//!   --engine NAME --binary-sha256 HASH --model-sha256 HASH --max-tokens N --out CAPTURE.json [--cpu]`
++//!
++//! Writes a `gnostral.quality.capture/1` document (token ids of the greedy top-1 logprob at
++//! temperature 0) and prints one `GNOSTRAL_METRICS` line aggregated over every prompt.
++
++use anyhow::{bail, Context, Result};
++use mistralrs::{GgufModelBuilder, RequestBuilder, TextMessageRole};
++use serde_json::{json, Value};
++
++const CAPTURE_SCHEMA: &str = "gnostral.quality.capture/1";
++
++struct Args {
++    model_dir: String,
++    file: String,
++    manifest: String,
++    promptset_sha256: String,
++    engine: String,
++    binary_sha256: Option<String>,
++    model_sha256: Option<String>,
++    max_tokens: usize,
++    out: String,
++    cpu: bool,
++}
++
++fn parse() -> Result<Args> {
++    let mut map = std::collections::HashMap::new();
++    let mut cpu = false;
++    let mut it = std::env::args().skip(1);
++    while let Some(flag) = it.next() {
++        if flag == "--cpu" {
++            cpu = true;
++            continue;
++        }
++        let value = it.next().with_context(|| format!("{flag} needs a value"))?;
++        map.insert(flag, value);
++    }
++    let mut take = |k: &str| map.remove(k);
++    let need = |v: Option<String>, k: &str| v.with_context(|| format!("missing {k}"));
++    Ok(Args {
++        model_dir: need(take("--model-dir"), "--model-dir")?,
++        file: need(take("--file"), "--file")?,
++        manifest: need(take("--manifest"), "--manifest")?,
++        promptset_sha256: need(take("--promptset-sha256"), "--promptset-sha256")?,
++        engine: need(take("--engine"), "--engine")?,
++        binary_sha256: take("--binary-sha256"),
++        model_sha256: take("--model-sha256"),
++        max_tokens: need(take("--max-tokens"), "--max-tokens")?.parse()?,
++        out: need(take("--out"), "--out")?,
++        cpu,
++    })
++}
++
++#[tokio::main]
++async fn main() -> Result<()> {
++    let args = parse()?;
++    let manifest: Value = serde_json::from_str(&std::fs::read_to_string(&args.manifest)?)?;
++    let prompts = manifest["prompts"]
++        .as_array()
++        .context("manifest has no prompts")?;
++
++    let mut builder =
++        GgufModelBuilder::new(&args.model_dir, vec![args.file.clone()]).with_logging();
++    if args.cpu {
++        builder = builder.with_force_cpu();
++    }
++    let model = builder.build().await?;
++
++    let mut captures = Vec::new();
++    let (mut completion_tokens, mut completion_s) = (0usize, 0f64);
++    let (mut prompt_tokens, mut prompt_s) = (0usize, 0f64);
++    let mut ttft_ms = Vec::new();
++    for prompt in prompts {
++        let id = prompt["id"].as_str().context("prompt id")?;
++        let text = prompt["text"].as_str().context("prompt text")?;
++        let request = RequestBuilder::new()
++            .set_deterministic_sampler()
++            .set_sampler_max_len(args.max_tokens)
++            .return_logprobs(true)
++            .set_sampler_topn_logprobs(1)
++            .add_message(TextMessageRole::User, text);
++        let response = model.send_chat_request(request).await?;
++        let choice = response.choices.first().context("no choice")?;
++        let content = choice
++            .logprobs
++            .as_ref()
++            .and_then(|l| l.content.as_ref())
++            .context("engine returned no logprobs")?;
++        let mut ids = Vec::with_capacity(content.len());
++        for entry in content {
++            let Some(top) = entry.top_logprobs.first() else {
++                bail!("prompt {id}: a generated token has no top-1 logprob");
++            };
++            ids.push(top.token);
++        }
++        if ids.is_empty() {
++            bail!("prompt {id}: no tokens generated");
++        }
++        captures.push(json!({
++            "prompt_id": id,
++            "prompt_sha256": prompt["sha256"],
++            "token_ids": ids,
++        }));
++        let u = &response.usage;
++        completion_tokens += u.completion_tokens;
++        completion_s += f64::from(u.total_completion_time_sec);
++        prompt_tokens += u.prompt_tokens;
++        prompt_s += f64::from(u.total_prompt_time_sec);
++        ttft_ms.push(f64::from(u.total_prompt_time_sec) * 1e3);
++    }
++
++    let document = json!({
++        "schema": CAPTURE_SCHEMA,
++        "promptset_sha256": args.promptset_sha256,
++        "lane": {
++            "engine": args.engine,
++            "binary_sha256": args.binary_sha256,
++            "model_sha256": args.model_sha256,
++        },
++        "sampling": {"temperature": 0, "seed": 0, "max_tokens": args.max_tokens},
++        "captures": captures,
++    });
++    std::fs::write(&args.out, serde_json::to_string_pretty(&document)?)?;
++
++    let rate = |tokens: usize, secs: f64| (secs > 0.0).then(|| tokens as f64 / secs);
++    ttft_ms.sort_by(f64::total_cmp);
++    let median_ttft = ttft_ms.get(ttft_ms.len() / 2).copied();
++    println!(
++        "GNOSTRAL_METRICS {}",
++        json!({
++            "decode_tok_s": rate(completion_tokens, completion_s),
++            "prefill_tok_s": rate(prompt_tokens, prompt_s),
++            "ttft_ms": median_ttft,
++        })
++    );
++    Ok(())
++}

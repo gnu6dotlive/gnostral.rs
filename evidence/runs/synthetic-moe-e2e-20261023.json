@@ -1,0 +1,340 @@
+{
+  "schema": "gnostral.rs/synthetic-moe-e2e/1",
+  "date": "2026-10-23",
+  "scope": "CPU-only functional smoke of the patched engine on a synthetic random Qwen3-MoE GGUF (2 layers, 16 experts, top-4, Q2_K/Q3_K experts). Not a model, not a quality claim, not a performance measurement; no timing value is recorded here on purpose.",
+  "inputs": {
+    "model_generator": "harness/synthetic-moe/make_qwen3moe_gguf.py --seed 20261023",
+    "model_sha256": "581b732551a448531fef8f772dca2592fadf60bbb82f60cdbb75b9a9369b5c6a",
+    "promptset": {
+      "name": "q030-32-20261023",
+      "sha256": "c573a8d81684b4ce7630bf585e95860600f5d1ec7cbb469c9de0e7604cd1787e"
+    },
+    "max_tokens": 32,
+    "engine_patches": {
+      "0001-mistralrs-strata-grouped-executor-q026-q029.patch": "3b950fb646845dfc9ec927c7cb6ccb440dd86c0f9fdb663844e3a15b52d88642",
+      "0002-mistralrs-strata-trace-cpu-optin-capture-q042-q030-q031.patch": "988cc52c819308a6448f243ebdd9a8fdf40976114261d6a5f24db0c0cb7220d4"
+    },
+    "engine_base": "mistral.rs 24dbf5c + patches/strata-residency/20261023-mistralrs-strata-integration.patch, candle via patches/engine-program/candle-strata-public-reconstruction.BUILD-ONLY.patch",
+    "capture_binary_sha256": "105e56806f1bf218ca5e9b756166d237da84d09b5d09fe966582e557ecb4b222"
+  },
+  "greedy_parity_vs_per_route": {
+    "grouped": {
+      "prompts": 32,
+      "identical": 32,
+      "diverged": []
+    },
+    "gnostral": {
+      "prompts": 32,
+      "identical": 30,
+      "diverged": [
+        {
+          "prompt_id": "q12-de-translate",
+          "divergence_index": 18
+        },
+        {
+          "prompt_id": "q19-summary-tech",
+          "divergence_index": 15
+        }
+      ]
+    },
+    "baseline_upstream_cpu_path": {
+      "prompts": 32,
+      "identical": 12,
+      "diverged": [
+        {
+          "prompt_id": "q03-arith-word",
+          "divergence_index": 13
+        },
+        {
+          "prompt_id": "q05-rust-fn",
+          "divergence_index": 8
+        },
+        {
+          "prompt_id": "q07-sql",
+          "divergence_index": 4
+        },
+        {
+          "prompt_id": "q08-regex",
+          "divergence_index": 3
+        },
+        {
+          "prompt_id": "q09-bug",
+          "divergence_index": 20
+        },
+        {
+          "prompt_id": "q10-fr-explain",
+          "divergence_index": 2
+        },
+        {
+          "prompt_id": "q11-fr-translate",
+          "divergence_index": 4
+        },
+        {
+          "prompt_id": "q12-de-translate",
+          "divergence_index": 26
+        },
+        {
+          "prompt_id": "q14-list-format",
+          "divergence_index": 10
+        },
+        {
+          "prompt_id": "q16-yes-no",
+          "divergence_index": 18
+        },
+        {
+          "prompt_id": "q18-sequence",
+          "divergence_index": 10
+        },
+        {
+          "prompt_id": "q20-summary-memory",
+          "divergence_index": 30
+        },
+        {
+          "prompt_id": "q21-compare",
+          "divergence_index": 8
+        },
+        {
+          "prompt_id": "q22-definition",
+          "divergence_index": 12
+        },
+        {
+          "prompt_id": "q24-math-algebra",
+          "divergence_index": 16
+        },
+        {
+          "prompt_id": "q25-math-prob",
+          "divergence_index": 21
+        },
+        {
+          "prompt_id": "q27-science",
+          "divergence_index": 2
+        },
+        {
+          "prompt_id": "q28-rewrite",
+          "divergence_index": 1
+        },
+        {
+          "prompt_id": "q30-constraint",
+          "divergence_index": 8
+        },
+        {
+          "prompt_id": "q32-refusal-boundary",
+          "divergence_index": 8
+        }
+      ]
+    },
+    "grouped_with_trace_vs_grouped": {
+      "prompts": 32,
+      "identical": 32,
+      "diverged": []
+    }
+  },
+  "explanations": {
+    "gnostral": "Hypothesis, not measured per position: the gnostral Q3_K dot keeps one i32 per block where candle keeps 8 f32 lanes, and candle's AVX2 path orders float sums differently; on a random model with close logits that can flip late argmaxes. The lane stays opt-in and would need ledger entries under the Q-030 gate.",
+    "baseline_upstream_cpu_path": "Established by code inspection, not by a numerical test: on x86 CPU the upstream MoE path (mistralrs-quant gguf/cpu.rs qtensor_indexed_moe_forward) falls back to dequantising the whole Q2_K/Q3_K expert stack to F32 on every call and keeps F32 activations, while the residency path quantises activations to Q8_K as ggml does. Different numerics; no defect is claimed for either path."
+  },
+  "lane_driver": {
+    "pins": {
+      "gnostral": "PINNED",
+      "grouped": "PINNED",
+      "per-route": "PINNED"
+    },
+    "driver_status": "UNKNOWN",
+    "order": [
+      [
+        "per-route",
+        "warmup",
+        0
+      ],
+      [
+        "grouped",
+        "warmup",
+        0
+      ],
+      [
+        "gnostral",
+        "warmup",
+        0
+      ],
+      [
+        "per-route",
+        "measured",
+        0
+      ],
+      [
+        "grouped",
+        "measured",
+        0
+      ],
+      [
+        "gnostral",
+        "measured",
+        0
+      ],
+      [
+        "per-route",
+        "measured",
+        1
+      ],
+      [
+        "grouped",
+        "measured",
+        1
+      ],
+      [
+        "gnostral",
+        "measured",
+        1
+      ],
+      [
+        "per-route",
+        "measured",
+        2
+      ],
+      [
+        "grouped",
+        "measured",
+        2
+      ],
+      [
+        "gnostral",
+        "measured",
+        2
+      ]
+    ],
+    "runs": [
+      {
+        "lane": "per-route",
+        "phase": "warmup",
+        "index": 0,
+        "exit": "OK",
+        "parity": "PASS"
+      },
+      {
+        "lane": "grouped",
+        "phase": "warmup",
+        "index": 0,
+        "exit": "OK",
+        "parity": "PASS"
+      },
+      {
+        "lane": "gnostral",
+        "phase": "warmup",
+        "index": 0,
+        "exit": "OK",
+        "parity": "FAIL"
+      },
+      {
+        "lane": "per-route",
+        "phase": "measured",
+        "index": 0,
+        "exit": "OK",
+        "parity": "PASS"
+      },
+      {
+        "lane": "grouped",
+        "phase": "measured",
+        "index": 0,
+        "exit": "OK",
+        "parity": "PASS"
+      },
+      {
+        "lane": "gnostral",
+        "phase": "measured",
+        "index": 0,
+        "exit": "OK",
+        "parity": "FAIL"
+      },
+      {
+        "lane": "per-route",
+        "phase": "measured",
+        "index": 1,
+        "exit": "OK",
+        "parity": "PASS"
+      },
+      {
+        "lane": "grouped",
+        "phase": "measured",
+        "index": 1,
+        "exit": "OK",
+        "parity": "PASS"
+      },
+      {
+        "lane": "gnostral",
+        "phase": "measured",
+        "index": 1,
+        "exit": "OK",
+        "parity": "FAIL"
+      },
+      {
+        "lane": "per-route",
+        "phase": "measured",
+        "index": 2,
+        "exit": "OK",
+        "parity": "PASS"
+      },
+      {
+        "lane": "grouped",
+        "phase": "measured",
+        "index": 2,
+        "exit": "OK",
+        "parity": "PASS"
+      },
+      {
+        "lane": "gnostral",
+        "phase": "measured",
+        "index": 2,
+        "exit": "OK",
+        "parity": "FAIL"
+      }
+    ],
+    "comparison": [
+      "per-route: driver status is UNKNOWN, expected NO_XID",
+      "grouped: driver status is UNKNOWN, expected NO_XID",
+      "gnostral: semantic parity is FAIL, and a lane that did not pass the frozen probe cannot be ranked",
+      "gnostral: driver status is UNKNOWN, expected NO_XID"
+    ]
+  },
+  "trace_q042": {
+    "clock": "std::time::Instant (monotonic)",
+    "phases": [
+      {
+        "phase": "cpu_expert",
+        "count": 64,
+        "recorded": true
+      },
+      {
+        "phase": "forward",
+        "count": 32,
+        "recorded": true
+      },
+      {
+        "phase": "post_process",
+        "count": 0,
+        "recorded": false
+      },
+      {
+        "phase": "sample",
+        "count": 32,
+        "recorded": true
+      },
+      {
+        "phase": "schedule",
+        "count": 32,
+        "recorded": true
+      },
+      {
+        "phase": "upload",
+        "count": 0,
+        "recorded": false
+      }
+    ],
+    "dropped_spans": 0,
+    "note": "First real request after the warmup dummy run; overlap accounting fixed in gnostral-trace after this run's first attempt showed nested spans undercounted."
+  },
+  "not_verified": [
+    "CUDA build and any GPU path",
+    "a real model",
+    "any timing, throughput or VRAM number"
+  ]
+}

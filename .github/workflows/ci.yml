@@ -52,6 +52,18 @@ jobs:
         run: cargo test --locked --manifest-path crates/gnostral-trace/Cargo.toml
       - name: Q-013-B adapter compiles (live-scope tests are host-gated, not run here)
         run: cargo build --locked --manifest-path harness/q013b-local-adapter/Cargo.toml
+      - name: Rustfmt
+        run: |
+          cargo fmt --manifest-path harness/engine-provider-contract/Cargo.toml -- --check
+          cargo fmt --manifest-path crates/gnostral-expert-residency/Cargo.toml -- --check
+          cargo fmt --manifest-path crates/gnostral-moe-exec/Cargo.toml -- --check
+          cargo fmt --manifest-path crates/gnostral-cpu-kernels/Cargo.toml -- --check
+          cargo fmt --manifest-path harness/bench/Cargo.toml -- --check
+          cargo fmt --manifest-path crates/gnostral-memory-plan/Cargo.toml -- --check
+          cargo fmt --manifest-path crates/gnostral-scheduler/Cargo.toml -- --check
+          cargo fmt --manifest-path crates/gnostral-supervisor/Cargo.toml -- --check
+          cargo fmt --manifest-path crates/gnostral-trace/Cargo.toml -- --check
+          cargo fmt --manifest-path harness/q013b-local-adapter/Cargo.toml -- --check
       - name: Clippy (deny warnings)
         run: |
           cargo clippy --locked --manifest-path harness/engine-provider-contract/Cargo.toml --all-targets -- -D warnings
@@ -85,6 +97,8 @@ jobs:
         run: python3 -m unittest discover -s harness/placement -p 'test_*.py'
       - name: Quality oracle suite (Q-030)
         run: python3 -m unittest discover -s harness/quality -p 'test_*.py'
+      - name: Synthetic MoE GGUF fixture writer
+        run: python3 -m unittest discover -s harness/synthetic-moe -p 'test_*.py'
       - name: Script gates
         run: python3 -m unittest discover -s scripts -p 'test_*.py'
       - name: Documentation links
