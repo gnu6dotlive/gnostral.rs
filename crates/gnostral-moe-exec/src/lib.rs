@@ -384,6 +384,91 @@ pub fn execute_reference<E: GroupedExpert>(
     Ok(output)
 }
 
+/// Gather one group's token rows into a contiguous `[group.len, hidden]` buffer,
+/// in the group's route order.
+pub fn gather_group(
+    plan: &DispatchPlan,
+    group: &RouteGroup,
+    routes: &[Route],
+    tokens: &[f32],
+    hidden: usize,
+) -> Result<Vec<f32>, PlanError> {
+    let token_count = tokens.len() / hidden.max(1);
+    let mut rows = Vec::with_capacity(group.len * hidden);
+    for &index in plan.positions(group) {
+        let route = routes.get(index).ok_or(PlanError::Overflow)?;
+        let token = route.token as usize;
+        if token >= token_count {
+            return Err(PlanError::TokenOutOfRange {
+                token: route.token,
+                token_count: token_count as u32,
+            });
+        }
+        rows.extend_from_slice(&tokens[token * hidden..(token + 1) * hidden]);
+    }
+    Ok(rows)
+}
+
+/// Weighted scatter-add of per-group contributions, accumulated in `(token, ordinal)` order.
+///
+/// `contributions[g]` holds `[groups[g].len, hidden]` values in the group's route
+/// order (as produced from [`gather_group`]). The accumulation order is the one the
+/// per-route engine loop uses (routes sorted by `(token, ordinal)`, each output
+/// row starting from `0.0`), so a grouped executor whose per-row expert output
+/// equals the per-route output reproduces the per-route result **bit for bit**,
+/// independent of how routes were grouped. `Upload` groups are refused.
+pub fn scatter_ordered(
+    plan: &DispatchPlan,
+    routes: &[Route],
+    contributions: &[Vec<f32>],
+    token_count: usize,
+    hidden: usize,
+) -> Result<Vec<f32>, PlanError> {
+    plan.validate_conservation(routes.len())?;
+    if contributions.len() != plan.groups().len() {
+        return Err(PlanError::Overflow);
+    }
+    // route index -> (group, position inside the group)
+    let mut slot = vec![(usize::MAX, 0usize); routes.len()];
+    for (g, group) in plan.groups().iter().enumerate() {
+        if group.placement == Placement::Upload {
+            return Err(PlanError::UploadGroupNotReady {
+                layer: group.key.layer,
+                expert: group.key.expert,
+            });
+        }
+        if contributions[g].len() != group.len * hidden {
+            return Err(PlanError::Overflow);
+        }
+        for (position, &index) in plan.positions(group).iter().enumerate() {
+            slot[index] = (g, position);
+        }
+    }
+    let mut ordered: Vec<usize> = (0..routes.len()).collect();
+    ordered.sort_by_key(|&i| (routes[i].token, routes[i].ordinal));
+    let len = token_count.checked_mul(hidden).ok_or(PlanError::Overflow)?;
+    let mut output = vec![0f32; len];
+    for index in ordered {
+        let route = &routes[index];
+        let token = route.token as usize;
+        if token >= token_count {
+            return Err(PlanError::TokenOutOfRange {
+                token: route.token,
+                token_count: token_count as u32,
+            });
+        }
+        let (g, position) = slot[index];
+        let contribution = &contributions[g][position * hidden..(position + 1) * hidden];
+        for (dst, value) in output[token * hidden..(token + 1) * hidden]
+            .iter_mut()
+            .zip(contribution)
+        {
+            *dst += *value * route.weight;
+        }
+    }
+    Ok(output)
+}
+
 /// Naive per-route executor used as the oracle in tests and parity checks.
 pub fn execute_naive<E: GroupedExpert>(
     routes: &[Route],
@@ -607,6 +692,152 @@ mod tests {
             execute_reference(&plan, &routes, &tokens, hidden, &DeterministicExpert).unwrap();
         let naive = execute_naive(&routes, &tokens, hidden, &DeterministicExpert);
         assert_eq!(grouped, naive);
+    }
+
+    /// Non-trivial float expert: per-row output depends only on that row.
+    struct NonlinearExpert;
+    impl GroupedExpert for NonlinearExpert {
+        fn compute(
+            &self,
+            key: ExpertKey,
+            rows: &[usize],
+            tokens: &[f32],
+            hidden: usize,
+        ) -> Vec<f32> {
+            let mut out = Vec::with_capacity(rows.len() * hidden);
+            for &row in rows {
+                let x = &tokens[row * hidden..(row + 1) * hidden];
+                let s: f32 = x.iter().map(|v| v * 0.37).sum();
+                for (c, &v) in x.iter().enumerate() {
+                    out.push(
+                        (v * (1.1 + key.expert as f32 * 0.013)).sin() * 1e3 + s / (c as f32 + 3.0),
+                    );
+                }
+            }
+            out
+        }
+    }
+
+    struct Lcg(u64);
+    impl Lcg {
+        fn next(&mut self) -> u64 {
+            self.0 = self
+                .0
+                .wrapping_mul(6364136223846793005)
+                .wrapping_add(1442695040888963407);
+            self.0 >> 33
+        }
+        fn float(&mut self) -> f32 {
+            (self.next() % 20_001) as f32 / 1000.0 - 10.0
+        }
+    }
+
+    fn grouped_ordered(
+        plan: &DispatchPlan,
+        routes: &[Route],
+        tokens: &[f32],
+        hidden: usize,
+    ) -> Vec<f32> {
+        let contributions: Vec<Vec<f32>> = plan
+            .groups()
+            .iter()
+            .map(|group| {
+                let rows = gather_group(plan, group, routes, tokens, hidden).unwrap();
+                let local: Vec<usize> = (0..group.len).collect();
+                NonlinearExpert.compute(group.key, &local, &rows, hidden)
+            })
+            .collect();
+        scatter_ordered(plan, routes, &contributions, tokens.len() / hidden, hidden).unwrap()
+    }
+
+    #[test]
+    fn ordered_scatter_is_bit_equal_to_the_sorted_per_route_loop() {
+        let mut rng = Lcg(42);
+        let (token_count, hidden, top_k, experts) = (37u32, 24usize, 4u32, 9u32);
+        let tokens: Vec<f32> = (0..token_count as usize * hidden)
+            .map(|_| rng.float())
+            .collect();
+        let mut routes = Vec::new();
+        for token in 0..token_count {
+            for ordinal in 0..top_k {
+                routes.push(route(
+                    token,
+                    ordinal,
+                    3,
+                    (rng.next() % experts as u64) as u32,
+                    rng.float() / 7.0,
+                ));
+            }
+        }
+        let mut sorted = routes.clone();
+        sorted.sort_by_key(|r| (r.token, r.ordinal));
+        let naive = execute_naive(&sorted, &tokens, hidden, &NonlinearExpert);
+
+        for cap in [0usize, 1, 2, 5] {
+            // Any input permutation and any group cap must give the identical bits.
+            let mut shuffled = routes.clone();
+            for i in (1..shuffled.len()).rev() {
+                shuffled.swap(i, (rng.next() as usize) % (i + 1));
+            }
+            let plan = plan(
+                &shuffled,
+                |k| {
+                    if k.expert % 2 == 0 {
+                        Placement::GpuResident
+                    } else {
+                        Placement::CpuHost
+                    }
+                },
+                limits(token_count, cap),
+            )
+            .unwrap();
+            let grouped = grouped_ordered(&plan, &shuffled, &tokens, hidden);
+            assert!(
+                grouped
+                    .iter()
+                    .zip(&naive)
+                    .all(|(a, b)| a.to_bits() == b.to_bits()),
+                "cap {cap}"
+            );
+        }
+    }
+
+    #[test]
+    fn ordered_scatter_rejects_upload_and_bad_shapes() {
+        let (tokens, hidden) = sample_tokens();
+        let routes = vec![route(0, 0, 0, 0, 1.0), route(1, 0, 0, 1, 1.0)];
+        let upload = plan(
+            &routes,
+            |k| {
+                if k.expert == 1 {
+                    Placement::Upload
+                } else {
+                    Placement::CpuHost
+                }
+            },
+            limits(3, 0),
+        )
+        .unwrap();
+        let contributions = vec![vec![0.0; hidden]; upload.groups().len()];
+        assert_eq!(
+            scatter_ordered(&upload, &routes, &contributions, 3, hidden).unwrap_err(),
+            PlanError::UploadGroupNotReady {
+                layer: 0,
+                expert: 1
+            }
+        );
+        let ok = plan_cpu(&routes, limits(3, 0)).unwrap();
+        assert_eq!(
+            scatter_ordered(&ok, &routes, &[vec![0.0; hidden]], 3, hidden).unwrap_err(),
+            PlanError::Overflow
+        );
+        assert_eq!(
+            scatter_ordered(&ok, &routes, &[vec![0.0; hidden], vec![0.0; 1]], 3, hidden)
+                .unwrap_err(),
+            PlanError::Overflow
+        );
+        let rows = gather_group(&ok, &ok.groups()[0], &routes, &tokens, hidden).unwrap();
+        assert_eq!(rows, tokens[..hidden].to_vec());
     }
 
     #[test]

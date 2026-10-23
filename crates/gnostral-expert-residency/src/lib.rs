@@ -1,5 +1,6 @@
 //! Native expert-residency bookkeeping. No inference or physical-memory claims.
 // Mechanisms informed by Niko1221/Strata, MIT, copyright 2026 contributors.
+pub mod dynamic;
 mod plan;
 pub use plan::{CachePlan, ExpertKey, ExpertSize, SlotSpec};
 mod routes;
