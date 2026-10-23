@@ -1,0 +1,12 @@
+[package]
+name = "gnostral-memory-plan"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.94"
+license = "MIT"
+description = "Q-027/Q-028/Q-038/Q-041 memory budget arithmetic: envelope arbitration, segmented allocator, paged KV blocks, KV streaming plan, desktop reserve state machine"
+publish = false
+
+[workspace]
+
+[dependencies]
