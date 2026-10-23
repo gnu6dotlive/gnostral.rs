@@ -1,5 +1,6 @@
 //! Q-013-A: evidence-bound probe admission and lifecycle *reference model*.
 //! No process spawning, privilege grant, model loading, or network operations.
+use crate::sha256::sha256_hex;
 use crate::{
     valid_transition, EngineIdentity, Fact, InstanceState, ModelArtifact, ModelHandle,
     QualificationStatus, ReadinessLevel, ReclaimReceipt, SemanticProbeReceipt, ServingMode,
@@ -44,6 +45,7 @@ pub enum AdmissionError {
     WrongPhase,
     ReceiptIdentityMismatch,
     SemanticProofMissing,
+    WitnessDigestMismatch,
     UnloadNotAcknowledged,
     ReclaimNotHostVerified,
 }
@@ -56,6 +58,13 @@ fn valid_sha(value: &str) -> bool {
 }
 fn valid_evidence_ref(value: &str) -> bool {
     value.strip_prefix("sha256:").is_some_and(valid_sha)
+}
+
+/// SHA-256 of the exact witness output bytes, lowercase hex.
+///
+/// A witness must carry this value; a digest-shaped string is not evidence.
+pub fn witness_digest(observed_output: &str) -> String {
+    sha256_hex(observed_output.as_bytes())
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -216,11 +225,16 @@ impl ProbeLifecycle {
             || witness.verifier.trim().is_empty()
             || witness.verifier == self.engine.name
             || witness.observed_output != receipt.observed_output
-            || !valid_sha(&witness.observed_digest_sha256)
             || !witness.passed
             || witness.checked_at_ms < receipt.completed_at_ms
         {
             return Err(AdmissionError::SemanticProofMissing);
+        }
+        // The digest must be the digest *of the bytes above*, not a shape-valid token.
+        if !valid_sha(&witness.observed_digest_sha256)
+            || witness_digest(&witness.observed_output) != witness.observed_digest_sha256
+        {
+            return Err(AdmissionError::WitnessDigestMismatch);
         }
         self.transition(InstanceState::Ready(ReadinessLevel::Semantic))
     }

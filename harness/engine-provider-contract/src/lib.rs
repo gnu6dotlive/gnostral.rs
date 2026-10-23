@@ -4,6 +4,8 @@
 //! evidence boundaries; it is not an inference runtime.
 
 pub mod q013;
+pub mod sha256;
+pub mod v1;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Fact<T> {

@@ -76,7 +76,7 @@ fn witness() -> IndependentWitness {
         evidence_ref: REF.into(),
         verifier: "independent-harness".into(),
         observed_output: "MoE experts moved to CPU RAM".into(),
-        observed_digest_sha256: BIN.into(),
+        observed_digest_sha256: witness_digest("MoE experts moved to CPU RAM"),
         passed: true,
         checked_at_ms: 103,
     }
@@ -311,12 +311,37 @@ fn independent_witness_must_match_actual_output_and_time() {
         Err(AdmissionError::SemanticProofMissing)
     );
     w = witness();
-    w.observed_digest_sha256 = "0".into();
+    w.observed_digest_sha256 = "0".repeat(64);
     assert_eq!(
         s.semantic_ready(&receipt(), &w),
-        Err(AdmissionError::SemanticProofMissing)
+        Err(AdmissionError::WitnessDigestMismatch)
     );
     assert_eq!(s.state(), InstanceState::Loading);
+
+    // A valid-looking digest of different bytes is not evidence.
+    w = witness();
+    w.observed_digest_sha256 = witness_digest("another response");
+    assert_eq!(
+        s.semantic_ready(&receipt(), &w),
+        Err(AdmissionError::WitnessDigestMismatch)
+    );
+
+    // A non-hex digest is rejected before any byte comparison.
+    w = witness();
+    w.observed_digest_sha256 = "z".repeat(64);
+    assert_eq!(
+        s.semantic_ready(&receipt(), &w),
+        Err(AdmissionError::WitnessDigestMismatch)
+    );
+    assert_eq!(s.state(), InstanceState::Loading);
+}
+
+#[test]
+fn witness_digest_helper_matches_the_published_nist_vector() {
+    assert_eq!(
+        witness_digest("abc"),
+        "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"
+    );
 }
 
 #[test]
