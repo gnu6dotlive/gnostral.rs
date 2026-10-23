@@ -1,0 +1,753 @@
+From 69dbc508459725cc5456ef3423d44e6468461a2d Mon Sep 17 00:00:00 2001
+From: Jordan <dev.in@gnu6.live>
+Date: Fri, 23 Oct 2026 20:21:00 +0000
+Subject: [PATCH] feat(moe): grouped residency executor and gnostral CPU expert
+ kernel (Q-026, Q-029)
+
+---
+ mistralrs-core/Cargo.toml                     |   8 +-
+ mistralrs-core/src/moe/experts/backends.rs    |  13 +-
+ mistralrs-core/src/moe/experts/residency.rs   | 443 ++++++++++++++++--
+ .../src/moe/experts/residency_tests.rs        | 167 +++++++
+ 4 files changed, 597 insertions(+), 34 deletions(-)
+
+diff --git a/mistralrs-core/Cargo.toml b/mistralrs-core/Cargo.toml
+index d10872a..8e5a001 100644
+--- a/mistralrs-core/Cargo.toml
++++ b/mistralrs-core/Cargo.toml
+@@ -14,6 +14,8 @@ homepage.workspace = true
+ 
+ [dependencies]
+ gnostral-expert-residency = { path = "../../../crates/gnostral-expert-residency", optional = true }
++gnostral-moe-exec = { path = "../../../crates/gnostral-moe-exec", optional = true }
++gnostral-cpu-kernels = { path = "../../../crates/gnostral-cpu-kernels", optional = true }
+ anyhow.workspace = true
+ candle-core.workspace = true
+ metrics.workspace = true
+@@ -120,7 +122,11 @@ objc2-metal = { workspace = true, optional = true }
+ candle-metal-kernels = { workspace = true, optional = true }
+ 
+ [features]
+-gnostral-expert-residency = ["dep:gnostral-expert-residency"]
++gnostral-expert-residency = [
++    "dep:gnostral-expert-residency",
++    "dep:gnostral-moe-exec",
++    "dep:gnostral-cpu-kernels",
++]
+ pyo3_macros = ["pyo3", "mistralrs-mcp/pyo3_macros"]
+ cuda = [
+     "candle-core/cuda",
+diff --git a/mistralrs-core/src/moe/experts/backends.rs b/mistralrs-core/src/moe/experts/backends.rs
+index 3380bab..dbd1239 100644
+--- a/mistralrs-core/src/moe/experts/backends.rs
++++ b/mistralrs-core/src/moe/experts/backends.rs
+@@ -1970,9 +1970,14 @@ impl ResidentExpertsWeights {
+                 });
+             }
+         }
+-        self.cache
+-            .forward(self.layer_id, forward.xs_flat, &routes, |xs| {
+-                xs.apply(&config.act)
+-            })
++        let act_f32 = matches!(config.act, crate::layers::Activation::Silu)
++            .then_some(gnostral_cpu_kernels::silu as fn(f32) -> f32);
++        self.cache.forward_with(
++            self.layer_id,
++            forward.xs_flat,
++            &routes,
++            |xs| xs.apply(&config.act),
++            act_f32,
++        )
+     }
+ }
+diff --git a/mistralrs-core/src/moe/experts/residency.rs b/mistralrs-core/src/moe/experts/residency.rs
+index 2baaef6..17fbc0c 100644
+--- a/mistralrs-core/src/moe/experts/residency.rs
++++ b/mistralrs-core/src/moe/experts/residency.rs
+@@ -92,11 +92,131 @@ use candle_core::{
+     DType, Device, Module, Tensor,
+ };
+ use gnostral_expert_residency::{partition_routes, CachePlan, ExpertSize, ResidencyTable, Route};
++use gnostral_moe_exec as exec;
+ use std::{
+     collections::BTreeMap,
+     sync::{Arc, Mutex, MutexGuard},
+ };
+ 
++pub(crate) const EXECUTOR_ENV: &str = "GNOSTRAL_MOE_EXECUTOR";
++pub(crate) const CPU_KERNEL_ENV: &str = "GNOSTRAL_CPU_EXPERT_KERNEL";
++pub(crate) const GPU_ROWS_ENV: &str = "GNOSTRAL_MOE_GPU_ROWS";
++
++/// Per-route loop (the Q-009/Q-010 path) or one plan per layer with grouped execution.
++#[derive(Clone, Copy, Debug, PartialEq, Eq)]
++pub(crate) enum ExecutorMode {
++    PerRoute,
++    Grouped,
++}
++
++/// Which CPU kernel computes host expert groups.
++#[derive(Clone, Copy, Debug, PartialEq, Eq)]
++pub(crate) enum CpuKernel {
++    /// Candle k_quants on the borrowed expert slice; bit-equal to the per-route path.
++    Candle,
++    /// gnostral-cpu-kernels grouped Q8_K x Q2_K/Q3_K FFN; tolerance-equal, not bit-equal.
++    Gnostral,
++}
++
++/// How resident (GPU) groups are dispatched.
++#[derive(Clone, Copy, Debug, PartialEq, Eq)]
++pub(crate) enum GpuRows {
++    /// One m=1 kernel per row, as the per-route path: same numerics, no per-route sync.
++    PerRow,
++    /// One kernel over the whole group; different CUDA kernel family for m > 1.
++    Batched,
++}
++
++#[derive(Clone, Copy, Debug, PartialEq, Eq)]
++pub(crate) struct ExecutorConfig {
++    pub mode: ExecutorMode,
++    pub cpu_kernel: CpuKernel,
++    pub gpu_rows: GpuRows,
++}
++
++impl Default for ExecutorConfig {
++    fn default() -> Self {
++        Self {
++            mode: ExecutorMode::Grouped,
++            cpu_kernel: CpuKernel::Candle,
++            gpu_rows: GpuRows::PerRow,
++        }
++    }
++}
++
++impl ExecutorConfig {
++    pub(crate) fn from_environment() -> Result<Self> {
++        let read = |name: &str| match std::env::var(name) {
++            Ok(value) => Ok(Some(value)),
++            Err(std::env::VarError::NotPresent) => Ok(None),
++            Err(e) => Err(error(&format!("invalid {name}: {e}"))),
++        };
++        Self::from_values(
++            read(EXECUTOR_ENV)?.as_deref(),
++            read(CPU_KERNEL_ENV)?.as_deref(),
++            read(GPU_ROWS_ENV)?.as_deref(),
++        )
++    }
++
++    pub(crate) fn from_values(
++        mode: Option<&str>,
++        cpu_kernel: Option<&str>,
++        gpu_rows: Option<&str>,
++    ) -> Result<Self> {
++        let config = Self {
++            mode: match mode {
++                None | Some("grouped") => ExecutorMode::Grouped,
++                Some("per-route") => ExecutorMode::PerRoute,
++                Some(other) => {
++                    candle_core::bail!("{EXECUTOR_ENV} must be grouped or per-route, got {other:?}")
++                }
++            },
++            cpu_kernel: match cpu_kernel {
++                None | Some("candle") => CpuKernel::Candle,
++                Some("gnostral") => CpuKernel::Gnostral,
++                Some(other) => {
++                    candle_core::bail!("{CPU_KERNEL_ENV} must be candle or gnostral, got {other:?}")
++                }
++            },
++            gpu_rows: match gpu_rows {
++                None | Some("per-row") => GpuRows::PerRow,
++                Some("batched") => GpuRows::Batched,
++                Some(other) => {
++                    candle_core::bail!("{GPU_ROWS_ENV} must be per-row or batched, got {other:?}")
++                }
++            },
++        };
++        if config.mode == ExecutorMode::PerRoute
++            && (config.cpu_kernel != CpuKernel::Candle || config.gpu_rows != GpuRows::PerRow)
++        {
++            candle_core::bail!("{CPU_KERNEL_ENV} and {GPU_ROWS_ENV} require the grouped executor");
++        }
++        Ok(config)
++    }
++}
++
++/// Repacked x86 kernels may change per-row numerics with m, so these dtypes run m=1 per row.
++fn batch_rows_bit_stable(dtype: GgmlDType) -> bool {
++    !matches!(dtype, GgmlDType::Q4K | GgmlDType::Q6K | GgmlDType::Q8_0)
++        && !cfg!(target_arch = "aarch64")
++}
++
++fn plan_error(e: exec::PlanError) -> candle_core::Error {
++    candle_core::Error::Msg(e.to_string())
++}
++
++fn kernel_error(e: gnostral_cpu_kernels::KernelError) -> candle_core::Error {
++    candle_core::Error::Msg(format!("gnostral cpu expert kernel: {e:?}"))
++}
++
++/// One host expert group handed to the gnostral grouped FFN.
++struct HostGroup {
++    slot: usize,
++    expert: usize,
++    rows: Vec<f32>,
++    len: usize,
++}
++
+ #[derive(Clone)]
+ pub(super) struct ExpertProjectionSet {
+     pub gate: Arc<QTensor>,
+@@ -123,6 +243,26 @@ impl ExpertProjectionSet {
+         let up = QMatMul::from_arc(self.up.clone())?.forward(xs)?;
+         QMatMul::from_arc(self.down.clone())?.forward(&(activation(&gate)? * up)?)
+     }
++    /// One expert over `rows` (`[m, hidden]` F32 on CPU), slicing the expert once per group.
++    fn compute_host_group(
++        &self,
++        expert: usize,
++        rows: &Tensor,
++        activation: &impl Fn(&Tensor) -> Result<Tensor>,
++    ) -> Result<Tensor> {
++        let weights = self.slice_to(expert, &Device::Cpu)?;
++        if self
++            .tensors()
++            .iter()
++            .all(|q| batch_rows_bit_stable(q.dtype()))
++        {
++            return weights.compute(rows, activation);
++        }
++        let parts = (0..rows.dim(0)?)
++            .map(|i| weights.compute(&rows.narrow(0, i, 1)?, activation))
++            .collect::<Result<Vec<_>>>()?;
++        Tensor::cat(&parts, 0)
++    }
+     fn padded_bytes(&self, experts: u32) -> Result<u64> {
+         let mut bytes = 0u64;
+         for q in self.tensors() {
+@@ -170,6 +310,7 @@ struct RuntimeState {
+ /// Model-scoped owner; one admission plan and one byte budget across every layer.
+ pub(crate) struct ExpertResidencyRuntime {
+     config: ExpertResidencyConfig,
++    executor: ExecutorConfig,
+     layers: u32,
+     experts: u32,
+     device: Device,
+@@ -187,6 +328,7 @@ impl ExpertResidencyRuntime {
+         }
+         Ok(Self {
+             config,
++            executor: ExecutorConfig::from_environment()?,
+             layers,
+             experts,
+             device,
+@@ -201,6 +343,10 @@ impl ExpertResidencyRuntime {
+             }),
+         })
+     }
++    #[cfg(test)]
++    pub(super) fn set_executor(&mut self, executor: ExecutorConfig) {
++        self.executor = executor;
++    }
+     pub(super) fn require_device(&self, device: &Device) -> Result<()> {
+         if !(device.is_cpu() || device.same_device(&self.device)) {
+             candle_core::bail!(
+@@ -432,6 +578,17 @@ impl ExpertResidencyRuntime {
+         xs: &Tensor,
+         routes: &[Route],
+         activation: impl Fn(&Tensor) -> Result<Tensor>,
++    ) -> Result<Tensor> {
++        self.forward_with(layer, xs, routes, activation, None)
++    }
++    /// `act_f32` is the scalar form of `activation`; the gnostral CPU kernel needs it.
++    pub(super) fn forward_with(
++        &self,
++        layer: u32,
++        xs: &Tensor,
++        routes: &[Route],
++        activation: impl Fn(&Tensor) -> Result<Tensor>,
++        act_f32: Option<fn(f32) -> f32>,
+     ) -> Result<Tensor> {
+         let (tokens, hidden) = xs.dims2()?;
+         let mut state = self.state()?;
+@@ -464,36 +621,14 @@ impl ExpertResidencyRuntime {
+         state
+             .observation
+             .route(partition.gpu.len(), partition.cpu.len())?;
+-        let mut ordered = routes.to_vec();
+-        ordered.sort_by_key(|r| (r.token, r.ordinal));
+-        let compute = (|| {
+-            let cpu = xs.to_dtype(DType::F32)?.to_device(&Device::Cpu)?;
+-            let mut output = vec![
+-                0f32;
+-                tokens
+-                    .checked_mul(hidden)
+-                    .ok_or_else(|| error("output shape overflow"))?
+-            ];
+-            for route in ordered {
+-                let row = cpu.narrow(0, route.token, 1)?;
+-                let contribution = if let Some(weights) = state.resident.get(&route.key) {
+-                    weights
+-                        .compute(&row.to_device(&self.device)?, &activation)?
+-                        .to_device(&Device::Cpu)?
+-                } else {
+-                    host.slice_to(route.key.expert as usize, &Device::Cpu)?
+-                        .compute(&row, &activation)?
+-                };
+-                let values = contribution.to_vec2::<f32>()?;
+-                for (dst, &value) in output[route.token * hidden..(route.token + 1) * hidden]
+-                    .iter_mut()
+-                    .zip(&values[0])
+-                {
+-                    *dst += value * route.weight;
+-                }
++        let compute = match self.executor.mode {
++            ExecutorMode::PerRoute => {
++                self.compute_per_route(&state.resident, &host, xs, routes, &activation)
++            }
++            ExecutorMode::Grouped => {
++                self.compute_grouped(&state.resident, &host, xs, routes, &activation, act_f32)
+             }
+-            Tensor::from_vec(output, (tokens, hidden), xs.device())?.to_dtype(xs.dtype())
+-        })();
++        };
+         // Errors may occur after enqueue. Never release a pin before owned CUDA work completes.
+         if !partition.gpu.is_empty() {
+             self.device.synchronize()?;
+@@ -507,6 +642,176 @@ impl ExpertResidencyRuntime {
+         }
+         compute
+     }
++
++    fn compute_per_route(
++        &self,
++        resident: &BTreeMap<ExpertKey, ExpertProjectionSet>,
++        host: &ExpertProjectionSet,
++        xs: &Tensor,
++        routes: &[Route],
++        activation: &impl Fn(&Tensor) -> Result<Tensor>,
++    ) -> Result<Tensor> {
++        let (tokens, hidden) = xs.dims2()?;
++        let mut ordered = routes.to_vec();
++        ordered.sort_by_key(|r| (r.token, r.ordinal));
++        let cpu = xs.to_dtype(DType::F32)?.to_device(&Device::Cpu)?;
++        let mut output = vec![
++            0f32;
++            tokens
++                .checked_mul(hidden)
++                .ok_or_else(|| error("output shape overflow"))?
++        ];
++        for route in ordered {
++            let row = cpu.narrow(0, route.token, 1)?;
++            let contribution = if let Some(weights) = resident.get(&route.key) {
++                weights
++                    .compute(&row.to_device(&self.device)?, activation)?
++                    .to_device(&Device::Cpu)?
++            } else {
++                host.slice_to(route.key.expert as usize, &Device::Cpu)?
++                    .compute(&row, activation)?
++            };
++            let values = contribution.to_vec2::<f32>()?;
++            for (dst, &value) in output[route.token * hidden..(route.token + 1) * hidden]
++                .iter_mut()
++                .zip(&values[0])
++            {
++                *dst += value * route.weight;
++            }
++        }
++        Tensor::from_vec(output, (tokens, hidden), xs.device())?.to_dtype(xs.dtype())
++    }
++
++    /// One plan per layer: GPU groups are enqueued first, host groups run while the device
++    /// works, a single sync collects the device results and the scatter-add follows the
++    /// per-route `(token, ordinal)` order.
++    fn compute_grouped(
++        &self,
++        resident: &BTreeMap<ExpertKey, ExpertProjectionSet>,
++        host: &ExpertProjectionSet,
++        xs: &Tensor,
++        routes: &[Route],
++        activation: &impl Fn(&Tensor) -> Result<Tensor>,
++        act_f32: Option<fn(f32) -> f32>,
++    ) -> Result<Tensor> {
++        let (tokens, hidden) = xs.dims2()?;
++        let flat = xs
++            .to_dtype(DType::F32)?
++            .to_device(&Device::Cpu)?
++            .flatten_all()?
++            .to_vec1::<f32>()?;
++        let exec_routes = routes
++            .iter()
++            .map(|r| {
++                Ok(exec::Route {
++                    token: u32::try_from(r.token).map_err(|_| error("route token overflow"))?,
++                    ordinal: u32::try_from(r.ordinal)
++                        .map_err(|_| error("route ordinal overflow"))?,
++                    key: exec::ExpertKey::new(r.key.layer, r.key.expert),
++                    weight: r.weight,
++                })
++            })
++            .collect::<Result<Vec<_>>>()?;
++        let plan = exec::plan(
++            &exec_routes,
++            |k| {
++                if resident.contains_key(&ExpertKey {
++                    layer: k.layer,
++                    expert: k.expert,
++                }) {
++                    exec::Placement::GpuResident
++                } else {
++                    exec::Placement::CpuHost
++                }
++            },
++            exec::PlanLimits {
++                token_count: u32::try_from(tokens).map_err(|_| error("token count overflow"))?,
++                max_group_routes: 0,
++            },
++        )
++        .map_err(plan_error)?;
++        let mut contributions = vec![Vec::new(); plan.groups().len()];
++
++        let mut device_parts = Vec::new();
++        let mut device_slots = Vec::new();
++        let mut host_groups = Vec::new();
++        for (slot, group) in plan.groups().iter().enumerate() {
++            let rows = exec::gather_group(&plan, group, &exec_routes, &flat, hidden)
++                .map_err(plan_error)?;
++            match group.placement {
++                exec::Placement::GpuResident => {
++                    let weights = &resident[&ExpertKey {
++                        layer: group.key.layer,
++                        expert: group.key.expert,
++                    }];
++                    let rows = Tensor::from_vec(rows, (group.len, hidden), &Device::Cpu)?
++                        .to_device(&self.device)?;
++                    let out = match self.executor.gpu_rows {
++                        GpuRows::Batched => weights.compute(&rows, activation)?,
++                        GpuRows::PerRow => {
++                            let parts = (0..group.len)
++                                .map(|i| weights.compute(&rows.narrow(0, i, 1)?, activation))
++                                .collect::<Result<Vec<_>>>()?;
++                            Tensor::cat(&parts, 0)?
++                        }
++                    };
++                    device_parts.push(out);
++                    device_slots.push((slot, group.len));
++                }
++                exec::Placement::CpuHost => host_groups.push(HostGroup {
++                    slot,
++                    expert: group.key.expert as usize,
++                    rows,
++                    len: group.len,
++                }),
++                exec::Placement::Upload => {
++                    return Err(plan_error(exec::PlanError::UploadGroupNotReady {
++                        layer: group.key.layer,
++                        expert: group.key.expert,
++                    }))
++                }
++            }
++        }
++
++        let gnostral = match (self.executor.cpu_kernel, act_f32) {
++            (CpuKernel::Gnostral, Some(act)) => Some(act),
++            (CpuKernel::Gnostral, None) => {
++                candle_core::bail!("{CPU_KERNEL_ENV}=gnostral requires a SiLU expert activation")
++            }
++            (CpuKernel::Candle, _) => None,
++        };
++        if let Some(act) = gnostral.filter(|_| !host_groups.is_empty()) {
++            let outputs = gnostral_host_ffn(host, &host_groups, hidden, act)?;
++            for (group, out) in host_groups.iter().zip(outputs) {
++                contributions[group.slot] = out;
++            }
++        } else {
++            for group in host_groups {
++                let rows = Tensor::from_vec(group.rows, (group.len, hidden), &Device::Cpu)?;
++                contributions[group.slot] = host
++                    .compute_host_group(group.expert, &rows, activation)?
++                    .flatten_all()?
++                    .to_vec1::<f32>()?;
++            }
++        }
++
++        if !device_parts.is_empty() {
++            let joined = Tensor::cat(&device_parts, 0)?
++                .to_device(&Device::Cpu)?
++                .to_dtype(DType::F32)?
++                .flatten_all()?
++                .to_vec1::<f32>()?;
++            let mut offset = 0;
++            for (slot, len) in device_slots {
++                contributions[slot] = joined[offset..offset + len * hidden].to_vec();
++                offset += len * hidden;
++            }
++        }
++
++        let output = exec::scatter_ordered(&plan, &exec_routes, &contributions, tokens, hidden)
++            .map_err(plan_error)?;
++        Tensor::from_vec(output, (tokens, hidden), xs.device())?.to_dtype(xs.dtype())
++    }
+ }
+ 
+ impl Drop for ExpertResidencyRuntime {
+@@ -573,3 +878,83 @@ impl ExpertResidencyRequest {
+         .ok_or_else(|| error("unexpected disabled expert residency request"))
+     }
+ }
++
++fn gnostral_host_ffn(
++    host: &ExpertProjectionSet,
++    groups: &[HostGroup],
++    hidden: usize,
++    act: fn(f32) -> f32,
++) -> Result<Vec<Vec<f32>>> {
++    use gnostral_cpu_kernels::{BlockQ2K, BlockQ3K};
++    if host.up.dtype() != host.gate.dtype() {
++        candle_core::bail!("gnostral cpu kernel needs gate and up in the same dtype");
++    }
++    match (host.gate.dtype(), host.down.dtype()) {
++        (GgmlDType::Q2K, GgmlDType::Q2K) => {
++            gnostral_ffn_typed::<BlockQ2K, BlockQ2K>(host, groups, hidden, act)
++        }
++        (GgmlDType::Q2K, GgmlDType::Q3K) => {
++            gnostral_ffn_typed::<BlockQ2K, BlockQ3K>(host, groups, hidden, act)
++        }
++        (GgmlDType::Q3K, GgmlDType::Q2K) => {
++            gnostral_ffn_typed::<BlockQ3K, BlockQ2K>(host, groups, hidden, act)
++        }
++        (GgmlDType::Q3K, GgmlDType::Q3K) => {
++            gnostral_ffn_typed::<BlockQ3K, BlockQ3K>(host, groups, hidden, act)
++        }
++        (gate, down) => candle_core::bail!(
++            "gnostral cpu kernel supports Q2K/Q3K experts, got gate {gate:?} down {down:?}"
++        ),
++    }
++}
++
++fn gnostral_ffn_typed<
++    G: gnostral_cpu_kernels::KQuantBlock,
++    D: gnostral_cpu_kernels::KQuantBlock,
++>(
++    host: &ExpertProjectionSet,
++    groups: &[HostGroup],
++    hidden: usize,
++    act: fn(f32) -> f32,
++) -> Result<Vec<Vec<f32>>> {
++    use gnostral_cpu_kernels::{kquant::blocks_from_bytes, ExpertGroup, FfnShape, Isa, Pool, QK_K};
++    let (experts, inter, gate_hidden) = host.gate.shape().dims3()?;
++    if gate_hidden != hidden || host.down.shape().dims() != [experts, hidden, inter] {
++        candle_core::bail!("gnostral cpu kernel expert geometry mismatch");
++    }
++    let (gate_bytes, up_bytes, down_bytes) =
++        (host.gate.data()?, host.up.data()?, host.down.data()?);
++    fn view<T: gnostral_cpu_kernels::KQuantBlock>(bytes: &[u8]) -> Result<&[T]> {
++        blocks_from_bytes::<T>(bytes)
++            .ok_or_else(|| error("expert stack is not a whole aligned block slice"))
++    }
++    let gate = view::<G>(&gate_bytes)?;
++    let up = view::<G>(&up_bytes)?;
++    let down = view::<D>(&down_bytes)?;
++    let per_gate = inter * hidden / QK_K;
++    let per_down = hidden * inter / QK_K;
++    if gate.len() != experts * per_gate
++        || up.len() != gate.len()
++        || down.len() != experts * per_down
++    {
++        candle_core::bail!("gnostral cpu kernel block count mismatch");
++    }
++    let ffn_groups = groups
++        .iter()
++        .map(|g| ExpertGroup {
++            gate: &gate[g.expert * per_gate..(g.expert + 1) * per_gate],
++            up: &up[g.expert * per_gate..(g.expert + 1) * per_gate],
++            down: &down[g.expert * per_down..(g.expert + 1) * per_down],
++            x: &g.rows,
++            rows: g.len,
++        })
++        .collect::<Vec<_>>();
++    gnostral_cpu_kernels::grouped_expert_ffn(
++        Isa::detect(),
++        Pool::global(),
++        FfnShape { hidden, inter },
++        &ffn_groups,
++        act,
++    )
++    .map_err(kernel_error)
++}
+diff --git a/mistralrs-core/src/moe/experts/residency_tests.rs b/mistralrs-core/src/moe/experts/residency_tests.rs
+index ffe112e..d0464ed 100644
+--- a/mistralrs-core/src/moe/experts/residency_tests.rs
++++ b/mistralrs-core/src/moe/experts/residency_tests.rs
+@@ -382,3 +382,170 @@ fn mixed_cpu_cuda_layer_admission_never_uploads_cpu_only_experts() -> candle_cor
+     assert_eq!(runtime.snapshot()?.gpu_allocated_bytes, Some(0));
+     Ok(())
+ }
++
++use super::residency::{CpuKernel, ExecutorConfig, ExecutorMode, GpuRows};
++
++const GROUPED_HIDDEN: usize = 512;
++const GROUPED_INTER: usize = 256;
++const GROUPED_EXPERTS: usize = 6;
++
++struct Lcg(u64);
++impl Lcg {
++    fn next(&mut self) -> u64 {
++        self.0 = self
++            .0
++            .wrapping_mul(6364136223846793005)
++            .wrapping_add(1442695040888963407);
++        self.0 >> 48
++    }
++    fn unit(&mut self) -> f32 {
++        let bits = u16::try_from(self.next()).expect("16-bit draw");
++        f32::from(bits) / f32::from(u16::MAX) * 2.0 - 1.0
++    }
++}
++
++fn lcg_values(seed: u64, n: usize, scale: f32) -> Vec<f32> {
++    let mut rng = Lcg(seed);
++    (0..n).map(|_| rng.unit() * scale).collect()
++}
++
++fn varied_projections() -> candle_core::Result<ExpertProjectionSet> {
++    let (e, h, i) = (GROUPED_EXPERTS, GROUPED_HIDDEN, GROUPED_INTER);
++    let q = |seed, shape: (usize, usize, usize), dtype| -> candle_core::Result<Arc<QTensor>> {
++        let n = shape.0 * shape.1 * shape.2;
++        Ok(Arc::new(QTensor::quantize(
++            &Tensor::from_vec(lcg_values(seed, n, 0.05), shape, &Device::Cpu)?,
++            dtype,
++        )?))
++    };
++    Ok(ExpertProjectionSet {
++        gate: q(1, (e, i, h), GgmlDType::Q2K)?,
++        up: q(2, (e, i, h), GgmlDType::Q2K)?,
++        down: q(3, (e, h, i), GgmlDType::Q3K)?,
++    })
++}
++
++fn varied_routes(tokens: usize, top_k: usize) -> Vec<Route> {
++    let mut rng = Lcg(7);
++    let experts = u64::try_from(GROUPED_EXPERTS).expect("small");
++    let mut routes = Vec::new();
++    for token in 0..tokens {
++        let mut used = Vec::new();
++        for ordinal in 0..top_k {
++            let mut expert = u32::try_from(rng.next() % experts).expect("small");
++            while used.contains(&expert) {
++                expert = (expert + 1) % u32::try_from(experts).expect("small");
++            }
++            used.push(expert);
++            routes.push(Route {
++                token,
++                ordinal,
++                key: ExpertKey { layer: 0, expert },
++                weight: 0.1 + rng.unit().abs() / 3.0,
++            });
++        }
++    }
++    routes
++}
++
++fn cpu_runtime(executor: ExecutorConfig) -> candle_core::Result<ExpertResidencyRuntime> {
++    let mut runtime = ExpertResidencyRuntime::new(
++        ExpertResidencyConfig {
++            budget_bytes: 0,
++            profile: vec![],
++        },
++        1,
++        u32::try_from(GROUPED_EXPERTS).expect("small"),
++        Device::Cpu,
++    )?;
++    runtime.set_executor(executor);
++    runtime.register(0, varied_projections()?)?;
++    runtime.finish_loading()?;
++    Ok(runtime)
++}
++
++fn executor(mode: ExecutorMode, cpu_kernel: CpuKernel) -> ExecutorConfig {
++    ExecutorConfig {
++        mode,
++        cpu_kernel,
++        gpu_rows: GpuRows::PerRow,
++    }
++}
++
++fn grouped_input(tokens: usize) -> candle_core::Result<Tensor> {
++    Tensor::from_vec(
++        lcg_values(11, tokens * GROUPED_HIDDEN, 2.0),
++        (tokens, GROUPED_HIDDEN),
++        &Device::Cpu,
++    )
++}
++
++#[test]
++fn grouped_cpu_executor_is_bit_equal_to_per_route() -> candle_core::Result<()> {
++    let tokens = 9;
++    let xs = grouped_input(tokens)?;
++    let routes = varied_routes(tokens, 4);
++    let per_route = cpu_runtime(executor(ExecutorMode::PerRoute, CpuKernel::Candle))?
++        .forward(0, &xs, &routes, |x| x.silu())?
++        .to_vec2::<f32>()?;
++    let grouped = cpu_runtime(executor(ExecutorMode::Grouped, CpuKernel::Candle))?;
++    let mut shuffled = routes.clone();
++    shuffled.reverse();
++    shuffled.swap(1, 7);
++    for order in [&routes, &shuffled] {
++        let got = grouped
++            .forward(0, &xs, order, |x| x.silu())?
++            .to_vec2::<f32>()?;
++        for (a, b) in got.iter().flatten().zip(per_route.iter().flatten()) {
++            assert_eq!(a.to_bits(), b.to_bits());
++        }
++    }
++    Ok(())
++}
++
++#[test]
++fn gnostral_cpu_kernel_tracks_candle_within_tolerance() -> candle_core::Result<()> {
++    let tokens = 9;
++    let xs = grouped_input(tokens)?;
++    let routes = varied_routes(tokens, 4);
++    let reference = cpu_runtime(executor(ExecutorMode::PerRoute, CpuKernel::Candle))?
++        .forward(0, &xs, &routes, |x| x.silu())?
++        .to_vec2::<f32>()?;
++    let gnostral = cpu_runtime(executor(ExecutorMode::Grouped, CpuKernel::Gnostral))?;
++    let silu: fn(f32) -> f32 = gnostral_cpu_kernels::silu;
++    let got = gnostral
++        .forward_with(0, &xs, &routes, |x| x.silu(), Some(silu))?
++        .to_vec2::<f32>()?;
++    for (row_got, row_ref) in got.iter().zip(&reference) {
++        let scale = row_ref.iter().fold(0f32, |m, v| m.max(v.abs())).max(1e-6);
++        for (a, b) in row_got.iter().zip(row_ref) {
++            // Same Q8_K activations; only float reduction order differs (frozen in Q-029).
++            assert!((a - b).abs() <= 1e-3 * scale, "{a} vs {b}");
++        }
++    }
++    assert!(gnostral
++        .forward_with(0, &xs, &routes, |x| x.silu(), None)
++        .is_err());
++    Ok(())
++}
++
++#[test]
++fn executor_configuration_is_explicit() -> candle_core::Result<()> {
++    let default = ExecutorConfig::from_values(None, None, None)?;
++    assert_eq!(default, executor(ExecutorMode::Grouped, CpuKernel::Candle));
++    assert_eq!(
++        ExecutorConfig::from_values(Some("per-route"), None, None)?.mode,
++        ExecutorMode::PerRoute
++    );
++    assert_eq!(
++        ExecutorConfig::from_values(None, Some("gnostral"), Some("batched"))?,
++        ExecutorConfig {
++            mode: ExecutorMode::Grouped,
++            cpu_kernel: CpuKernel::Gnostral,
++            gpu_rows: GpuRows::Batched,
++        }
++    );
++    assert!(ExecutorConfig::from_values(Some("fast"), None, None).is_err());
++    assert!(ExecutorConfig::from_values(Some("per-route"), Some("gnostral"), None).is_err());
++    Ok(())
++}
+-- 
+2.43.0
+

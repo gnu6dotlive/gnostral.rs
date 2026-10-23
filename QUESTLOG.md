@@ -70,7 +70,7 @@ DeepInfer/provider follow-ons; Q-013-D→Q-016 remain the supervisor gates.
 
 | ID | Quest | State | Scope (one line) |
 | --- | --- | --- | --- |
-| Q-026 | [MOE-EXECUTOR-02](quests/Q-026-MOE-EXECUTOR-02.md) | PROPOSED | Deterministic route partitioner + grouped executor + scatter-add; policy crate landed (13 tests, ordered scatter bit-equal to per-route), engine integration not landed |
+| Q-026 | [MOE-EXECUTOR-02](quests/Q-026-MOE-EXECUTOR-02.md) | PROPOSED | Deterministic route partitioner + grouped executor + scatter-add; policy crate landed; engine patch `patches/engine-program/0001` CPU-tested (bit-equal to per-route), no GPU run |
 | Q-027 | [RESIDENCY-DYNAMIC-01](quests/Q-027-RESIDENCY-DYNAMIC-01.md) | PROPOSED | Histogram-driven admission/eviction with leases, segmented allocator, expert/KV budget arbitration; policy and arithmetic landed offline, no engine hook |
 | Q-028 | [PAGED-OFFLOAD-01](quests/Q-028-PAGED-OFFLOAD-01.md) | PROPOSED | Paged KV + continuous batching for the all-GPU-layer, host-expert map; hybrid KV fallback; block pool and scheduler policy landed offline |
 | Q-029 | [CPU-KERNEL-Q8-01](quests/Q-029-CPU-KERNEL-Q8-01.md) | PROPOSED | Q8_0/Q8_K activations, fused gate/up, batched quantized CPU GEMM, AVX2/AVX-512, parity against ggml; Q2_K/Q3_K kernels landed (bit-identical ISAs, thread-invariant), no benchmark run |

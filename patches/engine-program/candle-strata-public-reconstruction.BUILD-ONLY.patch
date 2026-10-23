@@ -1,0 +1,249 @@
+From 5de22c4bfa66a75e326131c73e56735e7bfe28e7 Mon Sep 17 00:00:00 2001
+From: Jordan <dev.in@gnu6.live>
+Date: Fri, 23 Oct 2026 20:21:00 +0000
+Subject: [PATCH] build shim: public reconstruction of candle-strata expert
+ APIs
+
+---
+ candle-core/src/quantized/mod.rs | 172 +++++++++++++++++++++++++++++++
+ 1 file changed, 172 insertions(+)
+
+diff --git a/candle-core/src/quantized/mod.rs b/candle-core/src/quantized/mod.rs
+index 642025e..e857a45 100644
+--- a/candle-core/src/quantized/mod.rs
++++ b/candle-core/src/quantized/mod.rs
+@@ -115,6 +115,7 @@ impl QStorage {
+                 GgmlDType::Q6K => metal::load_quantized(d, as_t_slice::<BlockQ6K>(data)),
+                 GgmlDType::Q8K => metal::load_quantized(d, as_t_slice::<BlockQ8K>(data)),
+                 GgmlDType::BF16 => metal::load_quantized(d, as_t_slice::<bf16>(data)),
++                GgmlDType::PQ2_0 | GgmlDType::PTQ1_0 => crate::bail!("{BONSAI_UNAVAILABLE}"),
+             },
+             Device::Cuda(d) => match dtype {
+                 GgmlDType::F32 => cuda::load_quantized(d, as_t_slice::<f32>(data)),
+@@ -132,6 +133,7 @@ impl QStorage {
+                 GgmlDType::Q6K => cuda::load_quantized(d, as_t_slice::<BlockQ6K>(data)),
+                 GgmlDType::Q8K => cuda::load_quantized(d, as_t_slice::<BlockQ8K>(data)),
+                 GgmlDType::BF16 => cuda::load_quantized(d, as_t_slice::<bf16>(data)),
++                GgmlDType::PQ2_0 | GgmlDType::PTQ1_0 => crate::bail!("{BONSAI_UNAVAILABLE}"),
+             },
+         }
+     }
+@@ -298,6 +300,10 @@ pub enum GgmlDType {
+     Q5K,
+     Q6K,
+     Q8K,
++    /// Lab Bonsai format; load-refusing in this public reconstruction.
++    PQ2_0,
++    /// Lab Bonsai format; load-refusing in this public reconstruction.
++    PTQ1_0,
+ }
+ 
+ impl GgmlDType {
+@@ -342,6 +348,8 @@ impl GgmlDType {
+             Self::Q8K => 15,
+             // https://github.com/ggerganov/ggml/blob/29d87fc6676e7ed0cdfdec0804b06001d9c2bb44/include/ggml.h#L389
+             Self::BF16 => 30,
++            Self::PQ2_0 => 142,
++            Self::PTQ1_0 => 143,
+         }
+     }
+ 
+@@ -363,6 +371,7 @@ impl GgmlDType {
+             Self::Q6K => Box::new(vec![BlockQ6K::zeros(); elem_count / BlockQ6K::BLCK_SIZE]),
+             Self::Q8K => Box::new(vec![BlockQ8K::zeros(); elem_count / BlockQ8K::BLCK_SIZE]),
+             Self::BF16 => Box::new(vec![bf16::zeros(); elem_count]),
++            Self::PQ2_0 | Self::PTQ1_0 => panic!("{BONSAI_UNAVAILABLE}"),
+         }
+     }
+ 
+@@ -384,6 +393,7 @@ impl GgmlDType {
+             Self::Q6K => Box::new(as_t_slice::<BlockQ6K>(data).to_vec()),
+             Self::Q8K => Box::new(as_t_slice::<BlockQ8K>(data).to_vec()),
+             Self::BF16 => Box::new(as_t_slice::<bf16>(data).to_vec()),
++            Self::PQ2_0 | Self::PTQ1_0 => panic!("{BONSAI_UNAVAILABLE}"),
+         }
+     }
+ 
+@@ -406,6 +416,7 @@ impl GgmlDType {
+             Self::Q5K => std::mem::size_of::<BlockQ5K>(),
+             Self::Q6K => std::mem::size_of::<BlockQ6K>(),
+             Self::Q8K => std::mem::size_of::<BlockQ8K>(),
++            Self::PQ2_0 | Self::PTQ1_0 => 1,
+         }
+     }
+ 
+@@ -421,6 +432,7 @@ impl GgmlDType {
+             Self::Q8_0 => k_quants::QK8_0,
+             Self::Q8_1 => k_quants::QK8_1,
+             Self::Q2K | Self::Q3K | Self::Q4K | Self::Q5K | Self::Q6K | Self::Q8K => k_quants::QK_K,
++            Self::PQ2_0 | Self::PTQ1_0 => 1,
+         }
+     }
+ }
+@@ -1301,3 +1313,163 @@ impl crate::Module for QMatMul {
+         }
+     }
+ }
++
++/// gnostral candle-strata: per-expert access to a stacked `[experts, rows, cols]`
++/// GGUF expert tensor.
++///
++/// `expert_slice_to` is reconstructed for the public candle base from its call
++/// sites in the mistralrs-strata integration and the context of the Q-010
++/// patch; the lab commit `f0f334aa` that first carried it was never published.
++impl QTensor {
++    /// Copy one expert of a stacked expert tensor into a standalone `[rows, cols]`
++    /// quantized tensor on `device`.
++    pub fn expert_slice_to(&self, expert: usize, device: &Device) -> Result<QTensor> {
++        let (experts, rows, cols) = self.shape.dims3()?;
++        if expert >= experts {
++            crate::bail!("expert index {expert} out of bounds ({experts})");
++        }
++        let dtype = self.dtype();
++        if cols % dtype.block_size() != 0 {
++            crate::bail!("expert dimension is not quantization-block aligned");
++        }
++        let per_expert = rows
++            .checked_mul(cols / dtype.block_size())
++            .and_then(|blocks| blocks.checked_mul(dtype.type_size()))
++            .ok_or_else(|| crate::Error::Msg("expert byte size overflow".into()))?;
++        let data = self.data()?;
++        if data.len() != per_expert * experts {
++            crate::bail!("expert packed storage differs from declared geometry");
++        }
++        let bytes = &data[expert * per_expert..(expert + 1) * per_expert];
++        Self::new(QStorage::from_data(Cow::Borrowed(bytes), device, dtype)?, (rows, cols))
++    }
++    /// Copy-free CPU Q2_K/Q3_K projection of one expert in a GGUF stack.
++    ///
++    /// The input borrow and packed weight borrow stay alive through the
++    /// synchronous kernel. Other quantization types retain the fallback path.
++    pub fn cpu_expert_matmul_k(&self, expert: usize, xs: &Tensor) -> Result<Option<Tensor>> {
++        let dtype = self.dtype();
++        if !matches!(dtype, GgmlDType::Q2K | GgmlDType::Q3K)
++            || !xs.device().is_cpu()
++            || xs.dtype() != DType::F32
++        {
++            return Ok(None);
++        }
++        let QStorage::Cpu(weights) = &self.storage else {
++            return Ok(None);
++        };
++        let (experts, rows, cols) = self.shape.dims3()?;
++        if expert >= experts {
++            crate::bail!("expert index {expert} out of bounds ({experts})");
++        }
++        let (batch, xs_cols) = xs.dims2()?;
++        if batch != 1 || xs_cols != cols || !xs.is_contiguous() {
++            crate::bail!("expert projection expects contiguous [1, hidden] F32");
++        }
++        let src_storage = xs.storage();
++        let Storage::Cpu(input) = &*src_storage else {
++            return Ok(None);
++        };
++        let offset = xs.layout().start_offset();
++        let src = input.as_slice::<f32>()?;
++        let lhs = src.get(offset..offset + cols)
++            .ok_or_else(|| crate::Error::Msg("expert input truncated".into()))?;
++
++        fn borrowed_projection<T: GgmlType>(
++            weights: &dyn QuantizedType,
++            experts: usize,
++            expert: usize,
++            rows: usize,
++            cols: usize,
++            lhs: &[f32],
++        ) -> Result<Tensor> {
++            if cols % T::BLCK_SIZE != 0 {
++                crate::bail!("expert dimension is not quantization-block aligned");
++            }
++            let blocks_per_expert = rows.checked_mul(cols / T::BLCK_SIZE)
++                .ok_or_else(|| crate::Error::Msg("expert block size overflow".into()))?;
++            let blocks = blocks_per_expert.checked_mul(experts)
++                .ok_or_else(|| crate::Error::Msg("expert stack overflow".into()))?;
++            let expected_bytes = blocks.checked_mul(std::mem::size_of::<T>())
++                .ok_or_else(|| crate::Error::Msg("expert byte size overflow".into()))?;
++            if expected_bytes != weights.storage_size_in_bytes() {
++                crate::bail!("expert packed storage differs from declared geometry");
++            }
++            let base = weights.as_ptr();
++            if !(base as usize).is_multiple_of(std::mem::align_of::<T>()) {
++                crate::bail!("expert packed storage alignment mismatch");
++            }
++            // SAFETY: weights owns an immutable contiguous block allocation, kept
++            // alive by &self for the entire synchronous projection. Validated
++            // geometry, byte size, alignment and expert index bound the slice.
++            let all = unsafe { std::slice::from_raw_parts(base as *const T, blocks) };
++            let start = expert.checked_mul(blocks_per_expert)
++                .ok_or_else(|| crate::Error::Msg("expert range overflow".into()))?;
++            let selected = &all[start..start + blocks_per_expert];
++            let mut out = vec![0f32; rows];
++            k_quants::matmul((1, cols, rows), lhs, selected, &mut out)?;
++            Tensor::from_vec(out, (1, rows), &Device::Cpu)
++        }
++
++        Ok(Some(match dtype {
++            GgmlDType::Q2K => borrowed_projection::<BlockQ2K>(
++                weights.as_ref(), experts, expert, rows, cols, lhs,
++            )?,
++            GgmlDType::Q3K => borrowed_projection::<BlockQ3K>(
++                weights.as_ref(), experts, expert, rows, cols, lhs,
++            )?,
++            _ => unreachable!("dtype checked above"),
++        }))
++    }
++
++}
++
++/// Build-only stand-ins for the lab Bonsai (Prism Hadamard) transforms. The lab candle-strata
++/// implementation was never published; these keep the engine compiling and refuse every load.
++#[derive(Debug, Clone)]
++pub struct BonsaiForwardTransform;
++#[derive(Debug, Clone)]
++pub struct BonsaiInverseTransform;
++const BONSAI_UNAVAILABLE: &str =
++    "Bonsai PQ2_0/PTQ1_0 formats are unavailable in the public candle-strata reconstruction";
++impl BonsaiForwardTransform {
++    pub fn new(
++        _block_size: usize,
++        _signs: Option<Vec<i8>>,
++        _gdn_permutation: Option<(usize, usize, usize)>,
++    ) -> Result<Self> {
++        crate::bail!("{BONSAI_UNAVAILABLE}")
++    }
++}
++impl BonsaiInverseTransform {
++    pub fn new(_block_size: usize, _signs: Option<Vec<i8>>) -> Result<Self> {
++        crate::bail!("{BONSAI_UNAVAILABLE}")
++    }
++}
++impl QStorage {
++    pub fn from_bonsai_data(
++        _data: Cow<'_, [u8]>,
++        _device: &Device,
++        _dtype: GgmlDType,
++        _forward: Option<BonsaiForwardTransform>,
++        _inverse: Option<BonsaiInverseTransform>,
++    ) -> Result<Self> {
++        crate::bail!("{BONSAI_UNAVAILABLE}")
++    }
++}
++
++impl QTensor {
++    /// gnostral candle-strata build shim: device bytes of a CUDA quantized tensor, padded the
++    /// way the residency integration plans them; `None` off CUDA. The lab implementation was
++    /// never published.
++    pub fn cuda_allocation_bytes(&self) -> Option<u64> {
++        match &self.storage {
++            QStorage::Cuda(_) => {
++                let dtype = self.dtype();
++                let padding = 512 * dtype.type_size() as u64 / dtype.block_size() as u64;
++                Some(self.storage_size_in_bytes() as u64 + padding)
++            }
++            _ => None,
++        }
++    }
++}
+-- 
+2.43.0
+
