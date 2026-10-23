@@ -1,0 +1,12 @@
+[package]
+name = "gnostral-bench"
+version = "0.0.1"
+edition = "2021"
+rust-version = "1.94"
+license = "MIT"
+description = "Q-031 ENGINE-PERF-01 receipt validator and Pareto comparator for the frozen Q-025 protocol"
+publish = false
+
+[workspace]
+
+[dependencies]
