@@ -1,0 +1,13 @@
+[package]
+name = "gnostral-scheduler"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.94"
+license = "MIT"
+description = "Q-028/Q-039 continuous-batching scheduler policy: paged-KV admission, chunked prefill, deadline/priority classes, aging, preemption, deterministic simulation with per-request fairness receipts"
+publish = false
+
+[workspace]
+
+[dependencies]
+gnostral-memory-plan = { path = "../gnostral-memory-plan" }
