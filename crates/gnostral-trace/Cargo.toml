@@ -1,0 +1,12 @@
+[package]
+name = "gnostral-trace"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.94"
+license = "MIT"
+description = "Q-042 per-phase request timeline: off by default, allocation-free recording, monotonic clock, wall-time reconciliation with explicit UNKNOWN, measured overhead, JSON receipt"
+publish = false
+
+[workspace]
+
+[dependencies]
