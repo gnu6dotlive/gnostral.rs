@@ -17,6 +17,15 @@
 //! - [`gate_up_row_q8_0`]: a fused gate/up scheduling helper that reads one
 //!   activation row once and produces two projection blocks.
 //!
+//! And the K-quant expert path the engine actually needs (`Q2_K`/`Q3_K`
+//! weights against `Q8_K` activations, GGML block layout):
+//!
+//! - [`kquant`]: blocks, `Q8_K` quantisation, dequantisation and dot products
+//!   with scalar, AVX2 and AVX-512BW integer cores that are bit-identical.
+//! - [`gemm_q8k`] / [`grouped_expert_ffn`]: batched GEMM and the full gated
+//!   expert MLP for all expert groups of a layer on a persistent [`Pool`];
+//!   results are invariant to thread count and grouping.
+//!
 //! The scalar path is always compiled and always tested. The AVX2 path is
 //! compiled on `x86_64`, selected only after runtime feature detection, and is
 //! covered by parity tests against the scalar path. It is a reference kernel,
@@ -51,15 +60,24 @@
 
 mod block;
 mod f16;
+mod grouped;
 mod kernel;
+pub mod kquant;
+mod kquant_simd;
+mod pool;
 mod tolerance;
 
 pub use block::{dequantize_row_q8_0, quantize_row_q8_0, BlockQ8_0, QK8_0};
 pub use f16::{f16_to_f32, f32_to_f16_bits};
+pub use grouped::{
+    gemm_q8k, grouped_expert_ffn, quantize_rows_q8k, silu, ExpertGroup, FfnShape, GemmShape,
+};
 pub use kernel::{
     avx2_available, dot_block_q8_0_i32, dot_block_q8_0_i32_scalar, dot_q8_0, dot_q8_0_scalar,
     gate_up_row_q8_0, gemm_q8_0, gemm_q8_0_scalar, MAX_SAFE_K,
 };
+pub use kquant::{BlockQ2K, BlockQ3K, BlockQ8K, Isa, KQuantBlock, QK_K};
+pub use pool::{Pool, THREADS_ENV};
 pub use tolerance::{dequant_error_bound, dot_error_bound, F16_REL_EPS, F16_SUBNORMAL_STEP};
 
 /// A rejected Q8_0 operation.
@@ -87,4 +105,6 @@ pub enum KernelError {
         expected: usize,
         actual: usize,
     },
+    /// The requested instruction set is not available on this CPU.
+    IsaUnavailable { isa: &'static str },
 }

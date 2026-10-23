@@ -1,0 +1,177 @@
+//! AVX2 and AVX-512BW integer parts of the K-quant dot products.
+//!
+//! Each function returns exactly the same `i32` as its scalar counterpart in
+//! [`crate::kquant`]: `u8 x i8` pairs go through `maddubs` (no saturation is
+//! reachable: `u <= 7`, `|q8| <= 128`, so a pair sum is at most 1792) and the
+//! per-sub-block scales through `madd` into `i32` lanes.
+
+#![cfg(target_arch = "x86_64")]
+
+use crate::kquant::{BlockQ2K, BlockQ3K, BlockQ8K};
+use core::arch::x86_64::*;
+
+#[inline]
+#[target_feature(enable = "avx2")]
+fn hsum_avx2(acc: __m256i) -> i32 {
+    let lo = _mm256_castsi256_si128(acc);
+    let hi = _mm256_extracti128_si256::<1>(acc);
+    let s = _mm_add_epi32(lo, hi);
+    let s = _mm_add_epi32(s, _mm_shuffle_epi32::<0b0100_1110>(s));
+    let s = _mm_add_epi32(s, _mm_shuffle_epi32::<0b1011_0001>(s));
+    _mm_cvtsi128_si32(s)
+}
+
+#[inline]
+#[target_feature(enable = "avx2")]
+fn pair_scales_avx2(a: i16, b: i16) -> __m256i {
+    _mm256_setr_epi16(a, a, a, a, a, a, a, a, b, b, b, b, b, b, b, b)
+}
+
+#[inline]
+#[target_feature(enable = "avx512f,avx512bw")]
+fn quad_scales_avx512(s: [i16; 4]) -> __m512i {
+    let mut lanes = [0i16; 32];
+    for (i, lane) in lanes.iter_mut().enumerate() {
+        *lane = s[i / 8];
+    }
+    // SAFETY: `lanes` is 64 readable bytes.
+    unsafe { _mm512_loadu_si512(lanes.as_ptr() as *const __m512i) }
+}
+
+#[inline]
+#[target_feature(enable = "avx512f,avx512bw")]
+fn join(lo: __m256i, hi: __m256i) -> __m512i {
+    _mm512_inserti64x4::<1>(_mm512_castsi256_si512(lo), hi)
+}
+
+/// # Safety
+/// AVX2 must be available.
+#[target_feature(enable = "avx2")]
+pub(crate) unsafe fn q2k_isum_avx2(x: &BlockQ2K, y: &BlockQ8K) -> i32 {
+    let mask = _mm256_set1_epi8(3);
+    let mut acc = _mm256_setzero_si256();
+    for chunk in 0..2 {
+        // SAFETY: qs has 64 bytes; chunk * 32 + 32 <= 64.
+        let bits = unsafe { _mm256_loadu_si256(x.qs.as_ptr().add(chunk * 32) as *const __m256i) };
+        for s in 0..4 {
+            let g = chunk * 4 + s;
+            let v = _mm256_and_si256(
+                _mm256_srl_epi16(bits, _mm_cvtsi32_si128(2 * s as i32)),
+                mask,
+            );
+            // SAFETY: y.qs has 256 bytes; g * 32 + 32 <= 256.
+            let q8 = unsafe { _mm256_loadu_si256(y.qs.as_ptr().add(g * 32) as *const __m256i) };
+            let p = _mm256_maddubs_epi16(v, q8);
+            let sv = pair_scales_avx2(
+                i16::from(x.scales[2 * g] & 0xF),
+                i16::from(x.scales[2 * g + 1] & 0xF),
+            );
+            acc = _mm256_add_epi32(acc, _mm256_madd_epi16(p, sv));
+        }
+    }
+    hsum_avx2(acc)
+}
+
+/// # Safety
+/// AVX-512F and AVX-512BW must be available.
+#[target_feature(enable = "avx512f,avx512bw,avx2")]
+pub(crate) unsafe fn q2k_isum_avx512(x: &BlockQ2K, y: &BlockQ8K) -> i32 {
+    let mask = _mm256_set1_epi8(3);
+    let mut acc = _mm512_setzero_si512();
+    for chunk in 0..2 {
+        // SAFETY: as in the AVX2 path.
+        let bits = unsafe { _mm256_loadu_si256(x.qs.as_ptr().add(chunk * 32) as *const __m256i) };
+        for half in 0..2 {
+            let s0 = 2 * half;
+            let g = chunk * 4 + s0;
+            let v0 = _mm256_and_si256(
+                _mm256_srl_epi16(bits, _mm_cvtsi32_si128(2 * s0 as i32)),
+                mask,
+            );
+            let v1 = _mm256_and_si256(
+                _mm256_srl_epi16(bits, _mm_cvtsi32_si128(2 * (s0 + 1) as i32)),
+                mask,
+            );
+            // SAFETY: g * 32 + 64 <= 256.
+            let q8 = unsafe { _mm512_loadu_si512(y.qs.as_ptr().add(g * 32) as *const __m512i) };
+            let p = _mm512_maddubs_epi16(join(v0, v1), q8);
+            let sv = quad_scales_avx512([
+                i16::from(x.scales[2 * g] & 0xF),
+                i16::from(x.scales[2 * g + 1] & 0xF),
+                i16::from(x.scales[2 * g + 2] & 0xF),
+                i16::from(x.scales[2 * g + 3] & 0xF),
+            ]);
+            acc = _mm512_add_epi32(acc, _mm512_madd_epi16(p, sv));
+        }
+    }
+    _mm512_reduce_add_epi32(acc)
+}
+
+#[inline]
+#[target_feature(enable = "avx2")]
+fn q3k_unsigned_avx2(bits: __m256i, hmask: __m256i, g: usize) -> __m256i {
+    let shift = 2 * (g % 4) as i32;
+    let low = _mm256_and_si256(
+        _mm256_srl_epi16(bits, _mm_cvtsi32_si128(shift)),
+        _mm256_set1_epi8(3),
+    );
+    let high = _mm256_and_si256(
+        _mm256_srl_epi16(hmask, _mm_cvtsi32_si128(g as i32)),
+        _mm256_set1_epi8(1),
+    );
+    _mm256_or_si256(low, _mm256_slli_epi16::<2>(high))
+}
+
+/// # Safety
+/// AVX2 must be available.
+#[target_feature(enable = "avx2")]
+pub(crate) unsafe fn q3k_isum_avx2(x: &BlockQ3K, y: &BlockQ8K, scales: &[i8; 16]) -> i32 {
+    // SAFETY: hmask has 32 bytes.
+    let hmask = unsafe { _mm256_loadu_si256(x.hmask.as_ptr() as *const __m256i) };
+    let mut acc = _mm256_setzero_si256();
+    for chunk in 0..2 {
+        // SAFETY: qs has 64 bytes.
+        let bits = unsafe { _mm256_loadu_si256(x.qs.as_ptr().add(chunk * 32) as *const __m256i) };
+        for s in 0..4 {
+            let g = chunk * 4 + s;
+            let u = q3k_unsigned_avx2(bits, hmask, g);
+            // SAFETY: g * 32 + 32 <= 256.
+            let q8 = unsafe { _mm256_loadu_si256(y.qs.as_ptr().add(g * 32) as *const __m256i) };
+            let p = _mm256_maddubs_epi16(u, q8);
+            let sv = pair_scales_avx2(i16::from(scales[2 * g]), i16::from(scales[2 * g + 1]));
+            acc = _mm256_add_epi32(acc, _mm256_madd_epi16(p, sv));
+        }
+    }
+    hsum_avx2(acc)
+}
+
+/// # Safety
+/// AVX-512F and AVX-512BW must be available.
+#[target_feature(enable = "avx512f,avx512bw,avx2")]
+pub(crate) unsafe fn q3k_isum_avx512(x: &BlockQ3K, y: &BlockQ8K, scales: &[i8; 16]) -> i32 {
+    // SAFETY: hmask has 32 bytes.
+    let hmask = unsafe { _mm256_loadu_si256(x.hmask.as_ptr() as *const __m256i) };
+    let mut acc = _mm512_setzero_si512();
+    for chunk in 0..2 {
+        // SAFETY: qs has 64 bytes.
+        let bits = unsafe { _mm256_loadu_si256(x.qs.as_ptr().add(chunk * 32) as *const __m256i) };
+        for half in 0..2 {
+            let g = chunk * 4 + 2 * half;
+            let u = join(
+                q3k_unsigned_avx2(bits, hmask, g),
+                q3k_unsigned_avx2(bits, hmask, g + 1),
+            );
+            // SAFETY: g * 32 + 64 <= 256.
+            let q8 = unsafe { _mm512_loadu_si512(y.qs.as_ptr().add(g * 32) as *const __m512i) };
+            let p = _mm512_maddubs_epi16(u, q8);
+            let sv = quad_scales_avx512([
+                i16::from(scales[2 * g]),
+                i16::from(scales[2 * g + 1]),
+                i16::from(scales[2 * g + 2]),
+                i16::from(scales[2 * g + 3]),
+            ]);
+            acc = _mm512_add_epi32(acc, _mm512_madd_epi16(p, sv));
+        }
+    }
+    _mm512_reduce_add_epi32(acc)
+}
