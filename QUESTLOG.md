@@ -39,6 +39,7 @@
 | **Q-015** · resource-aware admission | PROPOSED | Expiring host/VRAM observations, denial on UNKNOWN, resource envelopes/cgroup enforcement, cancellation under pressure; never assign expert/KV placement authority to modeld |
 | **Q-016** · client SLO qualification | PROPOSED | TTFT/TPOT/ITL P95/P99 from frozen workload and client events, controlled static-vs-SLO A/B, throughput trade-offs and negative gates |
 | Multiple engines / AMD / Intel / multi-GPU | RESEARCH ONLY | Independent physical devices and driver/backend tests; typed traits alone do not qualify support |
+| **Q-025** · engine-direction decision | PROPOSED — protocol frozen | [Three-way benchmark](quests/Q-025-ENGINE-DIRECTION.md): llama.cpp CPU-MoE vs mistralrs-strata vs +residency on the same GGUF/host; decision rules pre-declared; no roadmap change before the receipt |
 
 ## 4. Independent research radar
 
@@ -53,3 +54,9 @@
 The GitHub repository is a **research workbench with executable fixtures**, not a production serving service. Claims must retain model/binary SHA, workload, host profile, source changes, negative results, audit and explicit nonclaims. Source support ≠ local observation ≠ functional PASS ≠ production readiness. Do not publish raw responses, secrets, local machine configuration or model weights.
 
 The Oct 9 Q-009/WakeKV intake is preserved from a locally signed research commit. Its historical worktree status is not silently represented as Oct 10 ground truth. The workstation's root `main` and its uncommitted files are left unchanged during public consolidation.
+
+## 5. Donor intake
+
+| ID | Quest | State | Boundary |
+| --- | --- | --- | --- |
+| [Q-017](quests/Q-017-DEEPINFER-DONOR-01.md) · DEEPINFER-DONOR-01 | REFERENCE_PINNED | Content-pinned reference donor only; no build, import, dependency or inference. Five engine-lane experiments (Q-018…Q-023) and the supervisor contract (Q-024) are gated separately. |

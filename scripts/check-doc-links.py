@@ -12,16 +12,20 @@ from pathlib import Path
 FILES = (
     "README.md", "QUESTLOG.md",
     "docs/START_HERE.md", "docs/CAPABILITY_MATRIX.md", "docs/ROADMAP.md",
-    "docs/ARCHITECTURE.md", "docs/REPRODUCIBILITY.md",
+    "docs/ARCHITECTURE.md", "docs/REPRODUCIBILITY.md", "docs/RELEASE.md",
+    "docs/DEEPINFER_DONOR_ANALYSIS.md",
     "quests/Q-013-EVIDENCE-BOUND-ADMISSION.md",
     "quests/Q-013B-ISOLATED-FIXTURE.md", "quests/Q-013C-REAL-DENSE-PILOT.md",
+    "quests/Q-017-DEEPINFER-DONOR-01.md", "quests/Q-025-ENGINE-DIRECTION.md",
 )
 LINK = re.compile(r"(?<!!)\[[^\]]+\]\(([^)]+)\)")
 FORBIDDEN_CLAIM = (
     ("README.md", "production-ready multi-model server.", False),  # appears as negation
 )
 REQUIRED = {
-    "QUESTLOG.md": ("Q-010", "Q-011", "Q-012", "Q-013-A", "Q-013-B", "Q-013-C", "Q-013-D", "WakeKV"),
+    "QUESTLOG.md": ("Q-010", "Q-011", "Q-012", "Q-013-A", "Q-013-B", "Q-013-C", "Q-013-D", "Q-017", "Q-025", "WakeKV"),
+    "docs/RELEASE.md": ("v0.9.0-rc1", "38c4134"),
+    "docs/DEEPINFER_DONOR_ANALYSIS.md": ("REFERENCE_ONLY", "Q-017"),
     "docs/CAPABILITY_MATRIX.md": ("NOT QUALIFIED", "FUNCTIONAL PASS", "Q013-C"),
     "docs/ROADMAP.md": ("Q-013D", "Q-014", "Q-015", "Q-016", "BURN-REMOTE-01"),
 }

@@ -4,7 +4,9 @@
 
 *Quantized models. Model/engine lifecycle. Residency. Verified performance. No imaginary PASS.*
 
-[Get started](docs/START_HERE.md) · [Capability matrix](docs/CAPABILITY_MATRIX.md) · [Live QUESTLOG](QUESTLOG.md) · [Technical roadmap](docs/ROADMAP.md) · [Architecture](docs/ARCHITECTURE.md) · [Reproducibility](docs/REPRODUCIBILITY.md)
+[Get started](docs/START_HERE.md) · [Capability matrix](docs/CAPABILITY_MATRIX.md) · [Live QUESTLOG](QUESTLOG.md) · [Technical roadmap](docs/ROADMAP.md) · [Architecture](docs/ARCHITECTURE.md) · [Reproducibility](docs/REPRODUCIBILITY.md) · [Release](docs/RELEASE.md)
+
+**Release:** `v0.9.0-rc1` (2026-10-23) · tag and provenance: [docs/RELEASE.md](docs/RELEASE.md)
 
 > **FR —** gnostral.rs est un laboratoire ouvert d'inférence locale en Rust sur GPU contraint. Il contient des expérimentations réelles, des benchmarks avec preuves, un contrat de moteur, un chemin MoE quantifié optimisé et un premier superviseur de processus d'inférence. **Ce n'est pas encore un serveur multi-modèle prêt à déployer.**
 
@@ -66,8 +68,10 @@ Full program: [roadmap](docs/ROADMAP.md) and [research watch](research/runtime/R
 git clone https://github.com/tension-atoi/gnostral.rs.git
 cd gnostral.rs
 cargo test --locked --manifest-path harness/engine-provider-contract/Cargo.toml
-python3 -m unittest discover -s harness/experiments -p 'test_q013c*.py'
+cargo test --locked --manifest-path crates/gnostral-expert-residency/Cargo.toml
+python3 -m unittest discover -s harness/experiments -p 'test_*.py'
 bash scripts/check-public.sh
+bash scripts/check-release-identity.sh
 ```
 
 Only the public contract, offline proof gates and hygiene checks run here. A real model experiment requires separately obtained exact weights and a matching engine executable **plus** a qualified isolated local workstation. See [the safety-first reproduction contract](docs/REPRODUCIBILITY.md).

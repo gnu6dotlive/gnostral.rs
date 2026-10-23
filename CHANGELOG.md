@@ -1,5 +1,27 @@
 # Changelog
 
+## 0.9.0-rc1 - 2026-10-23
+
+release-identity and evidence-gate hardening; no inference claim changes.
+
+- publish an exact release identity for the public tree (`docs/RELEASE.md`, tag `v0.9.0-rc1`);
+- make the documented offline evaluation runnable: both harness crates are standalone Cargo
+  workspaces, so `cargo test --manifest-path ...` works from a fresh clone;
+- enforce the offline gates in CI: Rust tests, clippy `-D warnings`, Python unit suites (normal
+  and `-O`), documentation links and public-artifact hygiene;
+- make audit gates fail closed under `python -O`: all bare `assert` gates in the Q-010/Q-012/Q-013-C
+  audit scripts are replaced by `harness/experiments/gates.py::demand`, with a regression test;
+- bind `IndependentWitness.observed_digest_sha256` to the SHA-256 of the exact witnessed output
+  bytes instead of shape-checking a digest-looking string;
+- register the lab `mistralrs-strata` engine fork as `PATCHED_UPSTREAM` with a file inventory and
+  exported residency patch (Q-009/Q-012 evidence source);
+- record DeepInfer as a `REFERENCE_ONLY` donor (Q-017) with a content digest pin, donor analysis
+  and a quest that gates any future port; no donor code is built, imported or vendored;
+- add the additive `EngineProvider v1` draft contract and reference module (Q-024a): provider
+  registry, typed capability negotiation, start/poll streaming, explicit error taxonomy and
+  admission facts, with the v0 trait unchanged;
+- freeze the three-way engine-direction benchmark protocol (Q-025) before further engine investment.
+
 ## 0.8.0 - 2026-10-07
 
 modeld promotion boundary ratification.

@@ -1,14 +1,74 @@
-name: repository-hygiene
+name: ci
+
+# Hygiene and offline-test gates only. No GPU work is ever run here: every
+# inference claim lives in evidence/ and is re-executed on the lab host.
+#
+# These exact commands were run green locally before this workflow was written
+# (release v0.9.0-rc1, rustc/cargo 1.97.0, Python 3.14). The only difference on
+# a fresh runner is that Cargo downloads the versions already pinned in the
+# lockfiles; the code and flags are identical.
 
 on:
   pull_request:
+  push:
+    branches: [main]
   workflow_dispatch:
 
 permissions:
   contents: read
 
+env:
+  CARGO_TERM_COLOR: always
+  GNOSTRAL_Q013B_TEST_EVIDENCE_DIR: /nonexistent
+
 jobs:
-  hygiene:
+  rust-offline-tests:
+    name: Rust tests and clippy
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Rust toolchain (pinned to the local qualification toolchain family)
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: "1.97.0"
+          components: clippy
+      - name: EngineProvider contract (v0 + Q-013 + v1 draft)
+        run: cargo test --locked --manifest-path harness/engine-provider-contract/Cargo.toml
+      - name: Expert-residency crate
+        run: cargo test --locked --manifest-path crates/gnostral-expert-residency/Cargo.toml
+      - name: Q-013-B adapter compiles (live-scope tests are host-gated, not run here)
+        run: cargo build --locked --manifest-path harness/q013b-local-adapter/Cargo.toml
+      - name: Clippy (deny warnings)
+        run: |
+          cargo clippy --locked --manifest-path harness/engine-provider-contract/Cargo.toml --all-targets -- -D warnings
+          cargo clippy --locked --manifest-path crates/gnostral-expert-residency/Cargo.toml --all-targets -- -D warnings
+          cargo clippy --locked --manifest-path harness/q013b-local-adapter/Cargo.toml --all-targets -- -D warnings
+
+  python-gates:
+    name: Python evidence gates (normal and -O)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Portable experiment suites
+        run: python3 -m unittest discover -s harness/experiments -p 'test_*.py'
+      - name: Same suites with the optimizer (gates must not vanish)
+        env:
+          PYTHONOPTIMIZE: "1"
+        run: python3 -m unittest discover -s harness/experiments -p 'test_*.py'
+      - name: Placement evidence suite
+        run: python3 -m unittest discover -s harness/placement -p 'test_*.py'
+      - name: Script gates
+        run: python3 -m unittest discover -s scripts -p 'test_*.py'
+      - name: Documentation links
+        run: python3 scripts/check-doc-links.py
+      - name: Upstreams manifest and inventory agreement
+        run: python3 scripts/check-upstreams.py
+
+  repository-hygiene:
+    name: Repository hygiene
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -16,3 +76,14 @@ jobs:
         run: ./scripts/check-public.sh
       - name: Whitespace
         run: git diff --check
+
+  release-identity:
+    name: Release identity (tags only)
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Exact tag, clean tree, required entrypoints
+        run: ./scripts/check-release-identity.sh
