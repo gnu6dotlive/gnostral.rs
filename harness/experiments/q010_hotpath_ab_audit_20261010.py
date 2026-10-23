@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+from gates import demand
 from pathlib import Path
 import json,hashlib,statistics,datetime,re,subprocess
 S=Path("/mnt/hdd/lab/sessions/gnostral-q010-cpu-moe-hotpath-retest-20261010")
@@ -17,44 +18,44 @@ p=json.loads((S/"frozen-protocol.json").read_text())
 current=json.loads((S/"summary.json").read_text())
 previous=json.loads((F/"summary.json").read_text())
 contract=json.loads((S/"RETEST-CONTRACT.json").read_text())
-assert current["status"]=="ALL_SIX_TRIALS_PASS" and current["completed"]==6 and current["by_engine"]=={"baseline":3,"candidate":3}
-assert previous["status"]=="NOT_QUALIFIED" and previous["completed"]==2
-assert p["repetition_order"]==["baseline","candidate","candidate","baseline","baseline","candidate"]
+demand(current["status"]=="ALL_SIX_TRIALS_PASS" and current["completed"]==6 and current["by_engine"]=={"baseline":3,"candidate":3}, "gate at q010_hotpath_ab_audit_20261010.py:20")
+demand(previous["status"]=="NOT_QUALIFIED" and previous["completed"]==2, "gate at q010_hotpath_ab_audit_20261010.py:21")
+demand(p["repetition_order"]==["baseline","candidate","candidate","baseline","baseline","candidate"], "gate at q010_hotpath_ab_audit_20261010.py:22")
 gate=p["predeclared_success_gate"]
-assert gate["candidate_median_tps_ratio_minimum"]==1.1 and gate["max_allowed_increase_gpu_peak_mib"]==128 and gate["max_allowed_increase_host_rss_mib"]==512
-assert h(MODEL)==p["source_sha256"]["model"]
-assert h(BASE)==p["source_sha256"]["strata"]
-assert h(CAND)=="dc11a9ad45574fea0565768bb877cd828b4ec7ee9eb1177537119959c42984c3"
-assert h(PROFILE)==p["source_sha256"]["profile"]
-assert h(F/"candidate_ab.py")==contract["source_script_sha256"]
-assert h(S/"candidate_ab_retest.py")==contract["retest_script_sha256"]
-assert contract["only_source_change"]=="S path to distinct lab session"
-assert subprocess.check_output(["git","-C",str(REPO),"rev-parse","--short","HEAD"],text=True).strip()=="67040aa"
+demand(gate["candidate_median_tps_ratio_minimum"]==1.1 and gate["max_allowed_increase_gpu_peak_mib"]==128 and gate["max_allowed_increase_host_rss_mib"]==512, "gate at q010_hotpath_ab_audit_20261010.py:24")
+demand(h(MODEL)==p["source_sha256"]["model"], "gate at q010_hotpath_ab_audit_20261010.py:25")
+demand(h(BASE)==p["source_sha256"]["strata"], "gate at q010_hotpath_ab_audit_20261010.py:26")
+demand(h(CAND)=="dc11a9ad45574fea0565768bb877cd828b4ec7ee9eb1177537119959c42984c3", "gate at q010_hotpath_ab_audit_20261010.py:27")
+demand(h(PROFILE)==p["source_sha256"]["profile"], "gate at q010_hotpath_ab_audit_20261010.py:28")
+demand(h(F/"candidate_ab.py")==contract["source_script_sha256"], "gate at q010_hotpath_ab_audit_20261010.py:29")
+demand(h(S/"candidate_ab_retest.py")==contract["retest_script_sha256"], "gate at q010_hotpath_ab_audit_20261010.py:30")
+demand(contract["only_source_change"]=="S path to distinct lab session", "gate at q010_hotpath_ab_audit_20261010.py:31")
+demand(subprocess.check_output(["git","-C",str(REPO),"rev-parse","--short","HEAD"],text=True).strip()=="67040aa", "gate at q010_hotpath_ab_audit_20261010.py:32")
 prior=json.loads((REPO/"evidence/runs/q010-cpu-hotpath-parity-20261010.json").read_text())
-assert prior["candle_tests"]["passed"]==6 and prior["mistralrs_cpu_route"]["passed"]==1
+demand(prior["candle_tests"]["passed"]==6 and prior["mistralrs_cpu_route"]["passed"]==1, "gate at q010_hotpath_ab_audit_20261010.py:34")
 rows=[];digests={};paired=[]
 for e in ("baseline","candidate"):
  for i in (1,2,3):
   name=f"{i:02d}-{e}"
   f=S/(name+".json")
   r=json.loads(f.read_text())
-  assert r["status"]=="PASS_SAMPLES" and r["server_reaped"] is True
-  assert r["engine"]==e and r["repeat"]==i and abs(r["reclaim_delta_mib"])<=128
-  assert r["before"]["ram_available_mib"]>=16384 and r["before"]["gpu"]["free_mib"]>=1536
-  assert r["ctx_requested"]==1024 and r["telemetry"]["samples"]>10
-  assert Path(r["server_start_cmd_redacted"][0])==(BASE if e=="baseline" else CAND)
+  demand(r["status"]=="PASS_SAMPLES" and r["server_reaped"] is True, "gate at q010_hotpath_ab_audit_20261010.py:41")
+  demand(r["engine"]==e and r["repeat"]==i and abs(r["reclaim_delta_mib"])<=128, "gate at q010_hotpath_ab_audit_20261010.py:42")
+  demand(r["before"]["ram_available_mib"]>=16384 and r["before"]["gpu"]["free_mib"]>=1536, "gate at q010_hotpath_ab_audit_20261010.py:43")
+  demand(r["ctx_requested"]==1024 and r["telemetry"]["samples"]>10, "gate at q010_hotpath_ab_audit_20261010.py:44")
+  demand(Path(r["server_start_cmd_redacted"][0])==(BASE if e=="baseline" else CAND), "gate at q010_hotpath_ab_audit_20261010.py:45")
   digests[f.name]=h(f)
   digests[name+".server.log"]=h(S/(name+".server.log"))
   for budget in (128,512):
    measure=r["samples"][str(budget)]
    output=S/(name+f"-{budget}-response.txt")
-   assert h(output)==measure["output_sha256"]
-   assert 0<measure["tokens"]<budget and measure["tps_engine"]>0
+   demand(h(output)==measure["output_sha256"], "gate at q010_hotpath_ab_audit_20261010.py:51")
+   demand(0<measure["tokens"]<budget and measure["tps_engine"]>0, "gate at q010_hotpath_ab_audit_20261010.py:52")
    txt=output.read_text()
    if budget==512:
-    assert all(f"{k}." in txt for k in range(1,7))
+    demand(all(f"{k}." in txt for k in range(1,7)), "gate at q010_hotpath_ab_audit_20261010.py:55")
    else:
-    assert txt.count(".")>=2
+    demand(txt.count(".")>=2, "gate at q010_hotpath_ab_audit_20261010.py:57")
    digests[output.name]=h(output)
    rows.append({
     "engine":e,"repeat":i,"budget":budget,"generated_tokens":measure["tokens"],
@@ -70,7 +71,7 @@ for budget in (128,512):
  for i in (1,2,3):
   a=(S/f"{i:02d}-baseline-{budget}-response.txt").read_bytes()
   b=(S/f"{i:02d}-candidate-{budget}-response.txt").read_bytes()
-  assert a==b
+  demand(a==b, "gate at q010_hotpath_ab_audit_20261010.py:73")
   paired.append({"repeat":i,"budget":budget,"identical_bytes":True,"sha256":hashlib.sha256(a).hexdigest()})
 agg={}
 for e in ("baseline","candidate"):
@@ -85,13 +86,13 @@ for e in ("baseline","candidate"):
   "max_absolute_reclaim_delta_mib":max(abs(x["post_reclaim_delta_mib"]) for x in own)
  }
  for b in ("128","512"):
-  assert abs(agg[e]["median_tps"][b]-current["median_decode_tps"][e][b])<1e-9
- assert agg[e]["median_peak_gpu_total_mib"]==current["median_gpu_peak_total_mib"][e]
- assert abs(agg[e]["median_host_rss_peak_mib"]-current["median_owned_rss_peak_mib"][e])<1e-9
+  demand(abs(agg[e]["median_tps"][b]-current["median_decode_tps"][e][b])<1e-9, "gate at q010_hotpath_ab_audit_20261010.py:88")
+ demand(agg[e]["median_peak_gpu_total_mib"]==current["median_gpu_peak_total_mib"][e], "gate at q010_hotpath_ab_audit_20261010.py:89")
+ demand(abs(agg[e]["median_host_rss_peak_mib"]-current["median_owned_rss_peak_mib"][e])<1e-9, "gate at q010_hotpath_ab_audit_20261010.py:90")
 ratios={b:agg["candidate"]["median_tps"][b]/agg["baseline"]["median_tps"][b] for b in ("128","512")}
 gpu_delta=agg["candidate"]["median_peak_gpu_total_mib"]-agg["baseline"]["median_peak_gpu_total_mib"]
 rss_delta=agg["candidate"]["median_host_rss_peak_mib"]-agg["baseline"]["median_host_rss_peak_mib"]
-assert ratios["512"]>=1.1 and gpu_delta<=128 and rss_delta<=512 and len(paired)==6
+demand(ratios["512"]>=1.1 and gpu_delta<=128 and rss_delta<=512 and len(paired)==6, "gate at q010_hotpath_ab_audit_20261010.py:94")
 for fn in ("frozen-protocol.json","summary.json","RETEST-CONTRACT.json","candidate_ab_retest.py","retest-controller.log"):
  digests[fn]=h(S/fn)
 kernel=subprocess.run(["journalctl","-k","--since","2026-10-10 02:54:00","--until","2026-10-10 03:01:00","-o","cat","--no-pager"],capture_output=True,text=True,timeout=30)
@@ -99,7 +100,7 @@ driver={"journal_rc":kernel.returncode,
  "NVRM_or_Xid":[l for l in kernel.stdout.splitlines() if re.search("NVRM|Xid",l,re.I)][:15],
  "scope":"host kernel journal only, not per-process NVIDIA driver attestation"}
 driver["pass"]=(kernel.returncode==0 and not driver["NVRM_or_Xid"])
-assert driver["pass"]
+demand(driver["pass"], "gate at q010_hotpath_ab_audit_20261010.py:102")
 audit={
  "schema":"q010-cpu-borrowed-q2kq3k-ab-independent-audit-v1",
  "status":"REPEATED_AB_PASS_INITIAL_FAILURE_RETAINED",
@@ -128,7 +129,7 @@ audit={
   "no product, modeld, production, remote push or docs publication authorized"
  ]}
 f=S/"independent-audit.json"
-assert not f.exists()
+demand(not f.exists(), "gate at q010_hotpath_ab_audit_20261010.py:131")
 f.write_text(json.dumps(audit,indent=2,ensure_ascii=False,sort_keys=True)+"\n")
 print("AUDIT_PASS",audit["status"],"ratios",ratios,"memory_deltas",gpu_delta,rss_delta)
 print("PAIRED_RESPONSES",len(paired),"FILES_HASHED",len(digests),"DRIVER_WINDOW",driver["pass"])

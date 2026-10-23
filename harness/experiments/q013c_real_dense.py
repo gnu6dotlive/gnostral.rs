@@ -5,6 +5,7 @@ This is an evidence-producing experimental harness, NOT an engine adapter deploy
 for arbitrary users. It never accepts an arbitrary executable, model, port or URL.
 """
 from __future__ import annotations
+from gates import demand
 import datetime
 import hashlib
 import json
@@ -55,7 +56,7 @@ def boundary() -> dict:
         raise RuntimeError("DENY_UNBOUNDED_CGROUP")
     cg=Path("/sys/fs/cgroup")/path.lstrip("/")
     parent=cg.parent
-    assert parent.name=="gnu6-lab.slice","DENY_CGROUP_PARENT"
+    demand(parent.name=="gnu6-lab.slice","DENY_CGROUP_PARENT")
     vals={x:number(cg/x) for x in ("memory.max","memory.swap.max","memory.oom.group","memory.current","memory.swap.current")}
     vals.update({"parent_"+x:number(parent/x) for x in ("memory.high","memory.max","memory.swap.max")})
     if (vals["memory.max"]>21*1024**3 or vals["memory.swap.max"]>2*1024**3 or vals["memory.oom.group"]!=1 or

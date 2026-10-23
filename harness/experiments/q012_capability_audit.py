@@ -4,6 +4,7 @@
 Never promotes CLI advertised features to runtime PASS. Fails closed on missing raw evidence.
 """
 from __future__ import annotations
+from gates import demand
 import argparse,datetime,hashlib,json,math,os,re
 from pathlib import Path
 
@@ -44,56 +45,56 @@ def main()->None:
    session=a.embedding_pass_session
   r=json.loads((session/f"{profile}-receipt.json").read_text())
   f=json.loads((session/"frozen-protocol.json").read_text())
-  assert isinstance(f.get("runtime_binary_sha256"),str) and len(f["runtime_binary_sha256"])==64
+  demand(isinstance(f.get("runtime_binary_sha256"),str) and len(f["runtime_binary_sha256"])==64, "gate at q012_capability_audit.py:47")
   log=(session/f"{profile}-server.log").read_text(errors="replace")
-  assert r["server_reaped"] is True
-  assert abs(r["gpu_ambient_reclaim_delta_mib"])<=128
-  assert r.get("telemetry",{}).get("peak_total_gpu_used_mib",0)>0
-  assert session.joinpath("summary.json").is_file()
+  demand(r["server_reaped"] is True, "gate at q012_capability_audit.py:49")
+  demand(abs(r["gpu_ambient_reclaim_delta_mib"])<=128, "gate at q012_capability_audit.py:50")
+  demand(r.get("telemetry",{}).get("peak_total_gpu_used_mib",0)>0, "gate at q012_capability_audit.py:51")
+  demand(session.joinpath("summary.json").is_file(), "gate at q012_capability_audit.py:52")
   summary=json.loads((session/"summary.json").read_text())
-  assert summary["engine_binary_sha256"]==f["runtime_binary_sha256"]
-  assert summary["entries"][profile]["status"]==r["status"]
+  demand(summary["engine_binary_sha256"]==f["runtime_binary_sha256"], "gate at q012_capability_audit.py:54")
+  demand(summary["entries"][profile]["status"]==r["status"], "gate at q012_capability_audit.py:55")
   for model,weight in f["weight_sha256"].items():
-   assert len(weight)==64
+   demand(len(weight)==64, "gate at q012_capability_audit.py:57")
    if a.rehash_models:
     source=Path(f["source_snapshot"][model])
     source=source/"model.safetensors" if source.is_dir() else source
     if source not in rehashed_models:
      rehashed_models[source]=sha(source)
-    assert rehashed_models[source]==weight,(model,"model weight source has changed")
+    demand(rehashed_models[source]==weight,(model,"model weight source has changed"))
   if r["status"]=="PASS_FUNCTIONAL":
    probe=r["probe"]
    if profile=="dense":
-    assert probe["answer"].strip()=="GNOSTRAL"
-    assert "Text" in log
+    demand(probe["answer"].strip()=="GNOSTRAL", "gate at q012_capability_audit.py:67")
+    demand("Text" in log, "gate at q012_capability_audit.py:68")
    elif profile=="moe":
-    assert "MoE" in probe["answer"] or "experts" in probe["answer"]
-    assert "mixed-device" in log and "disabling PagedAttention" in log
-    assert "native expert residency mixed-device admission" in log, "MoE native residency not compiled/activated"
-    assert "native expert residency engine counters initialized" in log, "MoE residency counters absent"
+    demand("MoE" in probe["answer"] or "experts" in probe["answer"], "gate at q012_capability_audit.py:70")
+    demand("mixed-device" in log and "disabling PagedAttention" in log, "gate at q012_capability_audit.py:71")
+    demand("native expert residency mixed-device admission" in log, "MoE native residency not compiled/activated")
+    demand("native expert residency engine counters initialized" in log, "MoE residency counters absent")
    else:
-    assert probe["kind"]=="embedding.vector"
-    assert probe["n"]==3 and probe["dimension"]==1024
-    assert all(math.isfinite(v) and v>0 for v in probe["norms"])
-    assert probe["related_higher"] is True
-    assert "Model loaded." in log
-    assert "🔢 Embedding" in log
+    demand(probe["kind"]=="embedding.vector", "gate at q012_capability_audit.py:75")
+    demand(probe["n"]==3 and probe["dimension"]==1024, "gate at q012_capability_audit.py:76")
+    demand(all(math.isfinite(v) and v>0 for v in probe["norms"]), "gate at q012_capability_audit.py:77")
+    demand(probe["related_higher"] is True, "gate at q012_capability_audit.py:78")
+    demand("Model loaded." in log, "gate at q012_capability_audit.py:79")
+    demand("🔢 Embedding" in log, "gate at q012_capability_audit.py:80")
     payload=json.loads((session/"embedding-vectors-private.json").read_text())
     vec=payload["vectors"]
-    assert len(vec)==3 and all(len(item)==1024 for item in vec)
-    assert all(all(isinstance(v,(int,float)) and math.isfinite(v) for v in item) for item in vec)
+    demand(len(vec)==3 and all(len(item)==1024 for item in vec), "gate at q012_capability_audit.py:83")
+    demand(all(all(isinstance(v,(int,float)) and math.isfinite(v) for v in item) for item in vec), "gate at q012_capability_audit.py:84")
     norm=[math.sqrt(sum(v*v for v in item)) for item in vec]
     def cosine(a,b,na,nb):
      return sum(x*y for x,y in zip(a,b))/(na*nb)
     related=cosine(vec[0],vec[1],norm[0],norm[1])
     unrelated=cosine(vec[0],vec[2],norm[0],norm[2])
-    assert related>unrelated
-    assert all(abs(x-y)<1e-5 for x,y in zip(norm,probe["norms"]))
-    assert abs(related-probe["related_cosine"])<1e-5
-    assert abs(unrelated-probe["unrelated_cosine"])<1e-5
+    demand(related>unrelated, "gate at q012_capability_audit.py:90")
+    demand(all(abs(x-y)<1e-5 for x,y in zip(norm,probe["norms"])), "gate at q012_capability_audit.py:91")
+    demand(abs(related-probe["related_cosine"])<1e-5, "gate at q012_capability_audit.py:92")
+    demand(abs(unrelated-probe["unrelated_cosine"])<1e-5, "gate at q012_capability_audit.py:93")
     for i,v in enumerate(vec):
      reported=json.loads((session/"embedding-response.json").read_text())["items"][i]["sha256"]
-     assert hashlib.sha256(json.dumps(v,separators=(',',':')).encode()).hexdigest()==reported
+     demand(hashlib.sha256(json.dumps(v,separators=(',',':')).encode()).hexdigest()==reported, "gate at q012_capability_audit.py:96")
   documents[profile]={
    "status":r["status"],"binary_sha256":f["runtime_binary_sha256"],
    "model_weight_sha256":f["weight_sha256"][profile],
@@ -116,7 +117,7 @@ def main()->None:
    "embedding_cacheless_engine_startup":"embedding",
   }[name]
   r=json.loads((session/f"{target}-receipt.json").read_text())
-  assert r["status"].startswith("NOT_QUALIFIED"),(name,r["status"])
+  demand(r["status"].startswith("NOT_QUALIFIED"),(name,r["status"]))
   failure_log=(session/f"{target}-server.log").read_text(errors="replace")
   expected_witness={
    "cli_argument_order":"unexpected argument '--host'",
@@ -125,7 +126,7 @@ def main()->None:
    "incomplete_qwen3_modules":"embedding.rs:495",
    "embedding_cacheless_engine_startup":"embedding.rs:789",
   }[name]
-  assert expected_witness in failure_log,(name,"expected cause not witnessed")
+  demand(expected_witness in failure_log,(name,"expected cause not witnessed"))
   documents.setdefault("negative",{})[name]={
    "status":r["status"],"session":str(session),
    "receipt_sha256":sha(session/f"{target}-receipt.json"),
@@ -133,7 +134,7 @@ def main()->None:
    "error_excerpt":"; ".join((session/f"{target}-server.log").read_text(errors="replace").splitlines()[-4:])[:560]
   }
  if a.embedding_pass_binary:
-  assert sha(a.embedding_pass_binary)==documents["embedding"]["binary_sha256"],"new binary hash mismatch"
+  demand(sha(a.embedding_pass_binary)==documents["embedding"]["binary_sha256"],"new binary hash mismatch")
  profiles=documents
  v={"schema":"gnostral.q012.capability-audit.v1",
   "generated_utc":datetime.datetime.now(datetime.timezone.utc).isoformat(),

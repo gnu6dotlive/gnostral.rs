@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Q-009 128/512-token ecosystem comparison; owned ephemeral processes, lab surfaces, immutable raw evidence."""
 from __future__ import annotations
+from gates import demand
 import datetime,hashlib,json,os,psutil,signal,socket,statistics,subprocess,sys,threading,time,urllib.request,urllib.error
 from pathlib import Path
 
@@ -167,7 +168,7 @@ def extract(engine,r):
    "load_ms_engine":None,"source":"mistralrs /v1/completions usage"}
 
 def run(engine,repeat):
- assert engine in PORTS and repeat in (1,2,3)
+ demand(engine in PORTS and repeat in (1,2,3), "gate at q010_hotpath_ab_retest_20261010.py:170")
  port=PORTS[engine]
  with socket.socket() as sock:
   if sock.connect_ex(("127.0.0.1",port))==0:raise RuntimeError(f"port {port} already listening")
@@ -197,7 +198,7 @@ def run(engine,repeat):
    argv[0]=str(Path("/mnt/sandbox/sessions/gnostral-q010-cpu-moe-hotpath-20261010/target/release/mistralrs"))
   for flag in ("--pa-context-len","--max-model-len"):
    argv[argv.index(flag)+1]="1024"
-  assert argv[argv.index("-m")+1]==str(MODEL.parent)
+  demand(argv[argv.index("-m")+1]==str(MODEL.parent), "gate at q010_hotpath_ab_retest_20261010.py:200")
   endpoint="/v1/models"
  log=S/f"{repeat:02d}-{engine}.server.log"
  proc=None;mon=None;lf=None
@@ -248,20 +249,20 @@ def run(engine,repeat):
  return r
 
 def preflight():
- assert str(S)==os.environ.get("LAB_SESSION")
- assert str(Path(os.environ["LAB_SCRATCH"])).startswith("/mnt/sandbox/sessions/")
- assert hash_file(MODEL)==EXPECTED["model"]
- assert hash_file(STRATA)==EXPECTED["strata"]
+ demand(str(S)==os.environ.get("LAB_SESSION"), "gate at q010_hotpath_ab_retest_20261010.py:251")
+ demand(str(Path(os.environ["LAB_SCRATCH"])).startswith("/mnt/sandbox/sessions/"), "gate at q010_hotpath_ab_retest_20261010.py:252")
+ demand(hash_file(MODEL)==EXPECTED["model"], "gate at q010_hotpath_ab_retest_20261010.py:253")
+ demand(hash_file(STRATA)==EXPECTED["strata"], "gate at q010_hotpath_ab_retest_20261010.py:254")
  candidate=Path("/mnt/sandbox/sessions/gnostral-q010-cpu-moe-hotpath-20261010/target/release/mistralrs")
- assert candidate.is_file()
+ demand(candidate.is_file(), "gate at q010_hotpath_ab_retest_20261010.py:256")
  candidate_sha=hash_file(candidate)
- assert candidate_sha!=EXPECTED["strata"]
+ demand(candidate_sha!=EXPECTED["strata"], "gate at q010_hotpath_ab_retest_20261010.py:258")
  (S/"candidate-hash-live.txt").write_text(candidate_sha+"\n")
- assert hash_file(LLAMA)==EXPECTED["llama"]
- assert hash_file(PROFILE)==EXPECTED["profile"]
+ demand(hash_file(LLAMA)==EXPECTED["llama"], "gate at q010_hotpath_ab_retest_20261010.py:260")
+ demand(hash_file(PROFILE)==EXPECTED["profile"], "gate at q010_hotpath_ab_retest_20261010.py:261")
  converted=OLLAMA_MODEL_BASE/"blobs/sha256-0c9ccb6f83225157b66006fb3d86164b2df173582edbe701fd82cb1e95d6dae0"
  # Ollama is not a participant in this matched-VRAM two-engine study.
- assert not (S/"summary.json").exists(),"refuse to overwrite prior benchmark"
+ demand(not (S/"summary.json").exists(),"refuse to overwrite prior benchmark")
  from subprocess import check_output
  frozen={"schema":"q010-strata-q2kq3k-cpu-borrowed-ab-v1","source_sha256":EXPECTED,
   "ctx_requested":1024,"seed":42,"threads":8,"repeats":3,
