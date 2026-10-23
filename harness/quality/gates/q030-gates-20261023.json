@@ -1,0 +1,26 @@
+{
+  "schema": "gnostral.quality.gates/1",
+  "name": "q030-gates-20261023",
+  "frozen": "2026-10-23",
+  "source": "docs/ENGINE_PROGRAM.md scorecard (Quality row) and quests/Q-030-QUALITY-PARITY-01.md gate table",
+  "min_prompts": 32,
+  "min_greedy_agreement": 0.995,
+  "max_kl_nats": 0.001,
+  "kl_epsilon": 1e-12,
+  "ks_alpha": 0.01,
+  "batch_sizes": [
+    1,
+    2,
+    4
+  ],
+  "long_context_tiers": [
+    1024,
+    8192,
+    32768
+  ],
+  "ledger_categories": [
+    "kernel_reduction_order",
+    "block_order",
+    "documented_numeric_difference"
+  ]
+}

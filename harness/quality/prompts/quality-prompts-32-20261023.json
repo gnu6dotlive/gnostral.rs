@@ -1,0 +1,167 @@
+{
+  "schema": "gnostral.quality.promptset/1",
+  "name": "q030-32-20261023",
+  "frozen": "2026-10-23",
+  "prompts": [
+    {
+      "id": "q01-capital",
+      "text": "What is the capital of Canada? Answer in one sentence.",
+      "sha256": "fac74ba58f01e06f2a3418156ca18f13efb15711cf78e10b7edba75527bce91b"
+    },
+    {
+      "id": "q02-arith-mul",
+      "text": "Compute 347 * 29. Show each step of the multiplication.",
+      "sha256": "2c8148c881a296edd86dfd43650be8bfb9786b0be720c62f5314224c76cace44"
+    },
+    {
+      "id": "q03-arith-word",
+      "text": "A train leaves at 09:40 and arrives at 13:15. How long is the journey in minutes?",
+      "sha256": "1b2af8cdf75c7eda09ca01deb1c1f8178bcf1a39a00961ead8db859db8575a6c"
+    },
+    {
+      "id": "q04-units",
+      "text": "Convert 3.5 GiB to MiB and to bytes. Show the arithmetic.",
+      "sha256": "a5f274d2447c7f7fae69218c3a560d0f41b8eb7aa8b4a447f0d6831c01021007"
+    },
+    {
+      "id": "q05-rust-fn",
+      "text": "Write a Rust function `fn is_prime(n: u64) -> bool` using trial division up to the square root.",
+      "sha256": "0fc5aa2a1af9c79662a9150102436babb8c31deb12f8b3bf504fc2073a9dbbe2"
+    },
+    {
+      "id": "q06-python-fn",
+      "text": "Write a Python function that returns the n-th Fibonacci number iteratively, with a docstring.",
+      "sha256": "a026a8c766ccd4974fed5a1abed8d04f0abb57cef3acecd91e2a6950e1dd5b0b"
+    },
+    {
+      "id": "q07-sql",
+      "text": "Write one SQL query that returns the five customers with the highest total order amount from tables customers(id, name) and orders(customer_id, amount).",
+      "sha256": "3a0ce12a954186a0d0d82da7040c20a8a02581ede094e3fa944ea48aaf162138"
+    },
+    {
+      "id": "q08-regex",
+      "text": "Give a regular expression that matches an ISO 8601 date like 2026-10-23 and explain each part briefly.",
+      "sha256": "77f8c7ae2fbc4b6b7685d272e1fcc6ff8b0b7de0b55eed972b5120371a21ebe3"
+    },
+    {
+      "id": "q09-bug",
+      "text": "This C code has a bug: `for (int i = 0; i <= n; i++) sum += a[i];` Explain the bug and fix it.",
+      "sha256": "dddd6ee8f7ca36734464403d306c13b01437835e05690c90a5fadc575270941e"
+    },
+    {
+      "id": "q10-fr-explain",
+      "text": "Explique en français, en trois phrases, ce qu'est un cache KV dans un modèle de langage.",
+      "sha256": "8be578338e4414e31f100ab33f8d6f474dd6cff2d2923c634fe1e9a888a3eb16"
+    },
+    {
+      "id": "q11-fr-translate",
+      "text": "Traduis en anglais : « Le moteur doit rester déterministe, même avec plusieurs requêtes en parallèle. »",
+      "sha256": "e609a35e928b043c6e86e62b40ee3bb96948ca186685c6b0a73d7e8447bc0716"
+    },
+    {
+      "id": "q12-de-translate",
+      "text": "Translate into German: The quality gate must pass before any speed number is recorded.",
+      "sha256": "75db9448dc41a1053a9905805cf8b683c679569a010697b16c7e71a373e34593"
+    },
+    {
+      "id": "q13-es-short",
+      "text": "Responde en español en una frase: ¿qué es la cuantización de un modelo?",
+      "sha256": "55d5df0c7cddc3658da53d980a639b237612621a2d75351978638e462db22b51"
+    },
+    {
+      "id": "q14-list-format",
+      "text": "List exactly four planets of the solar system in order from the Sun, one per line, no other text.",
+      "sha256": "3762c681645ee5ce76c405db419bc28e2800fa76ef4f291a8c62e5c180428007"
+    },
+    {
+      "id": "q15-json-format",
+      "text": "Return only a JSON object with keys \"name\" and \"year\" for the first person to walk on the Moon.",
+      "sha256": "67693e65dc6cb5241d1161c60cee2e49c81e8081fb21473c44254d4e7bc63541"
+    },
+    {
+      "id": "q16-yes-no",
+      "text": "Is 1001 a prime number? Answer yes or no, then give the factorisation if it is not prime.",
+      "sha256": "a4cef426c1307aaedc69be7eac07a0459908a9acccf7d05712aa9bb797966cef"
+    },
+    {
+      "id": "q17-logic",
+      "text": "All bloops are razzies and all razzies are lazzies. Are all bloops definitely lazzies? Explain in two sentences.",
+      "sha256": "88a572ac0d0fe9a69c473607e015d8efb9718730bb52049628844f30a012d34d"
+    },
+    {
+      "id": "q18-sequence",
+      "text": "What is the next number in the sequence 2, 6, 12, 20, 30, ...? Explain the rule.",
+      "sha256": "efb2e136798eed9dc7903b047553b4f2f1b8084ecef04b393763ad4a01761d9c"
+    },
+    {
+      "id": "q19-summary-tech",
+      "text": "Summarise in at most 60 words why mixture-of-experts models activate only a few experts per token.",
+      "sha256": "c99fd22deef427418925217dc93c210440175c80dc34b6d6d314555ec4271b7f"
+    },
+    {
+      "id": "q20-summary-memory",
+      "text": "In at most 80 words, explain why PCIe bandwidth matters when expert weights live in host memory.",
+      "sha256": "e3527f7cd06423177e987a5b00609f93f8fae5bd12ee8594106bcb13685906c8"
+    },
+    {
+      "id": "q21-compare",
+      "text": "Compare a mutex and a read-write lock in three bullet points.",
+      "sha256": "0283d15fff2a6daf5715c957c92ff177d5ef7a5c15a5dc376e955432bb894aa6"
+    },
+    {
+      "id": "q22-definition",
+      "text": "Define 'time to first token' and 'time per output token' for an LLM server, one sentence each.",
+      "sha256": "dfdc74b3f783c1dd15c007066ab3773e480ca44ed0bc026ce3ef4f31c7f0abcf"
+    },
+    {
+      "id": "q23-steps",
+      "text": "Give the numbered steps to safely replace a GPU driver on a Linux workstation without losing the desktop session.",
+      "sha256": "d7d994dfeecbb3d3e34dc1aa4e3aebb8b3e8da8f5e21e21a7e7729cefba4ab54"
+    },
+    {
+      "id": "q24-math-algebra",
+      "text": "Solve for x: 3x + 7 = 2x - 5. Show your work.",
+      "sha256": "e8dbc6a2e54efa9d20df56f21c396968982d1540be9b0165cf83d7224e95115b"
+    },
+    {
+      "id": "q25-math-prob",
+      "text": "Two fair dice are rolled. What is the probability that the sum is 8? Give the fraction in lowest terms.",
+      "sha256": "dd285771b01ccf84c18a31a79ec82496416099a86331090b586dc87979cf758f"
+    },
+    {
+      "id": "q26-history",
+      "text": "In which year did the Berlin Wall fall, and what happened in the following year in Germany?",
+      "sha256": "d51d7e99741f4faabd7d2489da9de94d2523823ea0214e6b166b36106535a2e0"
+    },
+    {
+      "id": "q27-science",
+      "text": "Why is the sky blue? Answer in at most three sentences.",
+      "sha256": "aa77e017a13f7ce799f58e23c7c3b84575ab08330f21fcc4c8f42b051a407883"
+    },
+    {
+      "id": "q28-rewrite",
+      "text": "Rewrite this sentence in the passive voice: The scheduler preempts the newest request when memory runs out.",
+      "sha256": "fb281e3f7a2fcdab9fc4c0d06b82ce7f9164877d6c29a887e013af291cf1d438"
+    },
+    {
+      "id": "q29-code-explain",
+      "text": "Explain what this Rust expression does: `v.iter().filter(|x| **x > 0).map(|x| x * 2).sum::<i32>()`.",
+      "sha256": "ba1cec111a6176b8f64a902aba0c129bf9a9d8f560193cebc7cac1092dba4177"
+    },
+    {
+      "id": "q30-constraint",
+      "text": "Write a haiku about a graphics card running out of memory. Use exactly three lines.",
+      "sha256": "821c1b6a176358184435a2b823570ad8ef158253bd85dd4ec403745fbed58b27"
+    },
+    {
+      "id": "q31-long-instruction",
+      "text": "You are given a list of tasks: compile the kernel, run the unit tests, write the release notes, tag the release. Some tasks depend on others: tests need the compiled kernel, the tag needs the notes and the tests. Output one valid execution order as a numbered list and justify each dependency in one short clause.",
+      "sha256": "b1dd7dabb6e03554d70df0d6b5ee5ddbcbf827a40b7c82f695fd67da1192c142"
+    },
+    {
+      "id": "q32-refusal-boundary",
+      "text": "A user asks how to make their laptop battery last longer. Give five practical tips.",
+      "sha256": "f800cc9edc0b3b69494729bb58486714aa706360a58724e66fc8f537f87abb7d"
+    }
+  ]
+}

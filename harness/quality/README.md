@@ -9,7 +9,9 @@ and distributions; it never runs a model and never produces a performance number
 | --- | --- | --- |
 | Prompt set `six-check-20261023` (6 prompts) | `prompts/quality-prompts-20261023.json` | one SHA-256 per prompt, one canonical SHA-256 over the manifest |
 | Oracle | `quality_oracle.py` | — |
-| Tests | `test_quality_oracle.py` | 30 tests, no network, no model |
+| Prompt set `q030-32-20261023` (32 prompts, the Q-030 gate set) | `prompts/quality-prompts-32-20261023.json` | `c573a8d81684b4ce7630bf585e95860600f5d1ec7cbb469c9de0e7604cd1787e` |
+| Gate thresholds `q030-gates-20261023` | `gates/q030-gates-20261023.json` | file SHA-256 written into every gate receipt |
+| Tests | `test_quality_oracle.py`, `test_quality_gate.py` | 41 tests, no network, no model |
 
 The manifest hash is printed by `manifest-hash` and must be copied verbatim into every
 capture, so a capture can never be compared against a different prompt set.
@@ -35,6 +37,15 @@ python3 harness/quality/quality_oracle.py parity \
 # KL(reference || candidate) over a normalised distribution
 python3 harness/quality/quality_oracle.py kl --reference p.json --candidate q.json
 
+# full Q-030 gate receipt: >= 32 prompts, agreement >= 99.5 %, every divergence in the
+# ledger, batch 2/4 invariance and 1K/8K/32K tiers identical to the short baseline
+python3 harness/quality/quality_oracle.py gate \
+  --manifest harness/quality/prompts/quality-prompts-32-20261023.json \
+  --gates harness/quality/gates/q030-gates-20261023.json \
+  --reference ref.json --candidate cand.json [--ledger ledger.json] \
+  --batch 2=cand-b2.json --batch 4=cand-b4.json \
+  --long-context 1024=c1k.json --long-context 8192=c8k.json --long-context 32768=c32k.json
+
 # KS uniformity gate over probability integral transforms
 python3 harness/quality/quality_oracle.py pit --samples pit.json
 
@@ -54,8 +65,14 @@ unnormalised distribution).
   matched prefix is retained so a reviewer can see how far the lanes agreed.
 - **Batch invariance** reuses the same comparison for batch-1 vs batch-N captures of
   one lane and relabels the failure explicitly.
-- **KL** applies a declared epsilon floor (default `1e-12`) and reports it; a result
-  is only meaningful against a pre-declared threshold.
+- **KL** applies a declared epsilon floor (default `1e-12`) and reports it; the CLI
+  default threshold is the program's `1e-3` nats.
+- **Gate receipt** (`gate`): thresholds come only from the frozen gates file, whose
+  SHA-256 is recorded. Verdict `BLOCKED` (prompt set under 32, unpinned lane),
+  `FAIL` (agreement under 99.5 %, any divergence not explained in the ledger at its
+  exact index, batch or long-context drift), `INCOMPLETE` (a batch or tier capture is
+  missing: `UNKNOWN`, never `PASS`), or `PASS`. Agreement counts matched-prefix
+  tokens only: after a divergence the context differs and positions stop comparing.
 - **KS/PIT** needs at least 8 samples and returns the statistic, the asymptotic
   p-value and the chosen alpha.
 

@@ -30,6 +30,9 @@ from typing import Any, Iterable, Sequence
 
 SCHEMA_MANIFEST = "gnostral.quality.promptset/1"
 SCHEMA_CAPTURE = "gnostral.quality.capture/1"
+SCHEMA_GATES = "gnostral.quality.gates/1"
+SCHEMA_LEDGER = "gnostral.quality.ledger/1"
+SCHEMA_GATE_RECEIPT = "gnostral.quality.gate-receipt/1"
 
 VERDICT_PASS = "PARITY_PASS"
 VERDICT_DIVERGED = "DIVERGED"
@@ -452,6 +455,216 @@ def uniformity_verdict(samples: Sequence[float], alpha: float = 0.01) -> dict[st
     }
 
 
+
+# ---------------------------------------------------------------------------
+# Frozen gates, divergence ledger and the full gate receipt
+# ---------------------------------------------------------------------------
+
+
+@dataclass(frozen=True)
+class Gates:
+    name: str
+    sha256: str
+    min_prompts: int
+    min_greedy_agreement: float
+    max_kl_nats: float
+    kl_epsilon: float
+    ks_alpha: float
+    batch_sizes: tuple[int, ...]
+    long_context_tiers: tuple[int, ...]
+    ledger_categories: tuple[str, ...]
+
+
+def load_gates(path: str | Path) -> Gates:
+    """Load the thresholds frozen before the first run; their hash goes into every receipt."""
+    data = Path(path).read_bytes()
+    raw = json.loads(data.decode("utf-8"))
+    if not isinstance(raw, dict) or raw.get("schema") != SCHEMA_GATES:
+        raise OracleError(f"gates schema must be {SCHEMA_GATES}")
+
+    def number(key: str, lo: float, hi: float) -> float:
+        value = raw.get(key)
+        if not isinstance(value, (int, float)) or isinstance(value, bool) or not lo <= value <= hi:
+            raise OracleError(f"gates.{key} must be a number in [{lo}, {hi}]")
+        return float(value)
+
+    def ints(key: str) -> tuple[int, ...]:
+        value = raw.get(key)
+        if not isinstance(value, list) or not value or not all(
+            isinstance(v, int) and not isinstance(v, bool) and v > 0 for v in value
+        ):
+            raise OracleError(f"gates.{key} must be a non-empty list of positive integers")
+        return tuple(value)
+
+    categories = raw.get("ledger_categories")
+    if not isinstance(categories, list) or not categories or not all(isinstance(c, str) and c for c in categories):
+        raise OracleError("gates.ledger_categories must be a non-empty list of strings")
+    return Gates(
+        name=str(raw.get("name") or ""),
+        sha256=sha256_bytes(data),
+        min_prompts=int(number("min_prompts", 1, 1_000_000)),
+        min_greedy_agreement=number("min_greedy_agreement", 0.0, 1.0),
+        max_kl_nats=number("max_kl_nats", 0.0, 10.0),
+        kl_epsilon=number("kl_epsilon", 1e-300, 0.5),
+        ks_alpha=number("ks_alpha", 1e-12, 0.5),
+        batch_sizes=ints("batch_sizes"),
+        long_context_tiers=ints("long_context_tiers"),
+        ledger_categories=tuple(categories),
+    )
+
+
+@dataclass(frozen=True)
+class LedgerEntry:
+    prompt_id: str
+    divergence_index: int
+    category: str
+    explanation: str
+    evidence_ref: str
+
+
+def load_ledger(path: str | Path, gates: Gates) -> dict[tuple[str, int], LedgerEntry]:
+    """Every divergent position must be explained here, at its exact index."""
+    raw = json.loads(Path(path).read_text(encoding="utf-8"))
+    if not isinstance(raw, dict) or raw.get("schema") != SCHEMA_LEDGER:
+        raise OracleError(f"ledger schema must be {SCHEMA_LEDGER}")
+    entries = raw.get("entries")
+    if not isinstance(entries, list):
+        raise OracleError("ledger entries must be a list")
+    ledger: dict[tuple[str, int], LedgerEntry] = {}
+    for index, entry in enumerate(entries):
+        if not isinstance(entry, dict):
+            raise OracleError(f"ledger entry {index} must be an object")
+        prompt_id = entry.get("prompt_id")
+        position = entry.get("divergence_index")
+        category = entry.get("category")
+        explanation = entry.get("explanation")
+        evidence = entry.get("evidence_ref")
+        if not isinstance(prompt_id, str) or not prompt_id:
+            raise OracleError(f"ledger entry {index}: prompt_id required")
+        if not isinstance(position, int) or isinstance(position, bool) or position < 0:
+            raise OracleError(f"ledger entry {index}: divergence_index must be a non-negative integer")
+        if category not in gates.ledger_categories:
+            raise OracleError(f"ledger entry {index}: category {category!r} is not one of {list(gates.ledger_categories)}")
+        if not isinstance(explanation, str) or not explanation.strip():
+            raise OracleError(f"ledger entry {index}: explanation required")
+        if not isinstance(evidence, str) or not evidence.strip():
+            raise OracleError(f"ledger entry {index}: evidence_ref required")
+        key = (prompt_id, position)
+        if key in ledger:
+            raise OracleError(f"ledger entry {index}: duplicate {key}")
+        ledger[key] = LedgerEntry(prompt_id, position, category, explanation, evidence)
+    return ledger
+
+
+def token_agreement(reference: LaneCapture, results: Sequence[ParityResult]) -> float:
+    """Matched-prefix tokens over reference tokens. Tokens after a divergence do not count:
+    their context differs, so positional agreement after it would be meaningless."""
+    total = sum(len(reference.tokens(r.prompt_id)) for r in results)
+    matched = sum(r.matched_prefix for r in results)
+    return matched / total if total else 0.0
+
+
+def _result_json(r: ParityResult) -> dict[str, Any]:
+    return {
+        "prompt_id": r.prompt_id,
+        "verdict": r.verdict,
+        "matched_prefix": r.matched_prefix,
+        "divergence_index": r.divergence_index,
+        "detail": r.detail,
+    }
+
+
+def gate_receipt(
+    manifest: PromptSet,
+    gates: Gates,
+    reference: LaneCapture,
+    candidate: LaneCapture,
+    ledger: dict[tuple[str, int], LedgerEntry] | None = None,
+    batched: dict[int, LaneCapture] | None = None,
+    long_context: dict[int, LaneCapture] | None = None,
+) -> dict[str, Any]:
+    """Full Q-030 gate. Verdict is BLOCKED, FAIL or PASS; every reason is listed."""
+    ledger = ledger or {}
+    batched = batched or {}
+    long_context = long_context or {}
+    blocked: list[str] = []
+    failed: list[str] = []
+
+    if len(manifest.prompts) < gates.min_prompts:
+        blocked.append(
+            f"prompt set {manifest.name!r} has {len(manifest.prompts)} prompts; the frozen gate needs {gates.min_prompts}"
+        )
+
+    results = parity_suite(reference, candidate)
+    if any(r.verdict == VERDICT_BLOCKED for r in results):
+        blocked.append("greedy parity is BLOCKED (unpinned lane, model mismatch or non-zero temperature)")
+    agreement = token_agreement(reference, results)
+    if agreement < gates.min_greedy_agreement:
+        failed.append(f"greedy agreement {agreement:.6f} < {gates.min_greedy_agreement}")
+
+    explained, unexplained = [], []
+    for r in results:
+        if r.verdict != VERDICT_DIVERGED:
+            continue
+        entry = ledger.get((r.prompt_id, r.divergence_index))
+        if entry is None:
+            unexplained.append(r.prompt_id)
+        else:
+            explained.append({"prompt_id": r.prompt_id, "divergence_index": r.divergence_index,
+                              "category": entry.category, "evidence_ref": entry.evidence_ref})
+    if unexplained:
+        failed.append(f"unexplained divergences (hard fail): {unexplained}")
+
+    batch_results: dict[str, Any] = {}
+    for size in gates.batch_sizes:
+        if size == 1:
+            continue
+        capture = batched.get(size)
+        if capture is None:
+            batch_results[str(size)] = "UNKNOWN"
+            continue
+        rs = [batch_invariance(candidate, capture, pid) for pid in candidate.captures]
+        batch_results[str(size)] = [_result_json(r) for r in rs]
+        if any(r.verdict == VERDICT_DIVERGED for r in rs):
+            failed.append(f"batch invariance failed at batch {size}")
+        if any(r.verdict == VERDICT_BLOCKED for r in rs):
+            blocked.append(f"batch {size} capture is BLOCKED")
+
+    tier_results: dict[str, Any] = {}
+    for tier in gates.long_context_tiers:
+        capture = long_context.get(tier)
+        if capture is None:
+            tier_results[str(tier)] = "UNKNOWN"
+            continue
+        rs = [greedy_parity(candidate, capture, pid) for pid in candidate.captures]
+        tier_results[str(tier)] = [_result_json(r) for r in rs]
+        if any(r.verdict == VERDICT_DIVERGED for r in rs):
+            failed.append(f"long-context tier {tier} drifted from the short-context baseline")
+        if any(r.verdict == VERDICT_BLOCKED for r in rs):
+            blocked.append(f"long-context tier {tier} capture is BLOCKED")
+
+    unknown = [f"batch {k}" for k, v in batch_results.items() if v == "UNKNOWN"]
+    unknown += [f"tier {k}" for k, v in tier_results.items() if v == "UNKNOWN"]
+    verdict = "BLOCKED" if blocked else ("FAIL" if failed else ("PASS" if not unknown else "INCOMPLETE"))
+    return {
+        "schema": SCHEMA_GATE_RECEIPT,
+        "verdict": verdict,
+        "blocked": blocked,
+        "failed": failed,
+        "unknown": unknown,
+        "gates": {"name": gates.name, "sha256": gates.sha256},
+        "promptset": {"name": manifest.name, "sha256": manifest.manifest_sha256, "prompts": len(manifest.prompts)},
+        "reference": {"engine": reference.lane.engine, "binary_sha256": reference.lane.binary_sha256,
+                      "model_sha256": reference.lane.model_sha256},
+        "candidate": {"engine": candidate.lane.engine, "binary_sha256": candidate.lane.binary_sha256,
+                      "model_sha256": candidate.lane.model_sha256},
+        "greedy_agreement": agreement,
+        "parity": [_result_json(r) for r in results],
+        "explained_divergences": explained,
+        "batch_invariance": batch_results,
+        "long_context": tier_results,
+    }
+
 # ---------------------------------------------------------------------------
 # CLI
 # ---------------------------------------------------------------------------
@@ -520,6 +733,35 @@ def _cmd_pit(args: argparse.Namespace) -> int:
     return 0 if result["verdict"] == "PASS" else 1
 
 
+def _sized_captures(pairs: Sequence[str], manifest: PromptSet, flag: str) -> dict[int, LaneCapture]:
+    out: dict[int, LaneCapture] = {}
+    for pair in pairs:
+        size, sep, path = pair.partition("=")
+        if not sep or not size.isdigit() or int(size) <= 0:
+            raise OracleError(f"{flag} expects SIZE=PATH, got {pair!r}")
+        if int(size) in out:
+            raise OracleError(f"{flag} {size} given twice")
+        out[int(size)] = load_capture(path, manifest)
+    return out
+
+
+def _cmd_gate(args: argparse.Namespace) -> int:
+    manifest, reference, candidate = _load_pair(args)
+    gates = load_gates(args.gates)
+    ledger = load_ledger(args.ledger, gates) if args.ledger else {}
+    receipt = gate_receipt(
+        manifest,
+        gates,
+        reference,
+        candidate,
+        ledger,
+        _sized_captures(args.batch, manifest, "--batch"),
+        _sized_captures(args.long_context, manifest, "--long-context"),
+    )
+    print(json.dumps(receipt, indent=2, sort_keys=True))
+    return {"PASS": 0, "FAIL": 1, "INCOMPLETE": 1, "BLOCKED": 2}[receipt["verdict"]]
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="quality-oracle", description=__doc__)
     sub = parser.add_subparsers(dest="command", required=True)
@@ -538,8 +780,18 @@ def build_parser() -> argparse.ArgumentParser:
     kl.add_argument("--reference", required=True)
     kl.add_argument("--candidate", required=True)
     kl.add_argument("--epsilon", type=float, default=1e-12)
-    kl.add_argument("--max-kl", type=float, default=0.01)
+    kl.add_argument("--max-kl", type=float, default=0.001)
     kl.set_defaults(func=_cmd_kl)
+
+    gate = sub.add_parser("gate", help="full Q-030 gate receipt against frozen thresholds")
+    gate.add_argument("--manifest", required=True)
+    gate.add_argument("--gates", required=True)
+    gate.add_argument("--reference", required=True)
+    gate.add_argument("--candidate", required=True)
+    gate.add_argument("--ledger")
+    gate.add_argument("--batch", action="append", default=[], metavar="SIZE=CAPTURE")
+    gate.add_argument("--long-context", action="append", default=[], metavar="TOKENS=CAPTURE")
+    gate.set_defaults(func=_cmd_gate)
 
     pit = sub.add_parser("pit", help="KS uniformity gate over PIT samples")
     pit.add_argument("--samples", required=True)
