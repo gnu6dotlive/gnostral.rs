@@ -1,0 +1,12 @@
+[package]
+name = "gnostral-cpu-kernels"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.94"
+license = "MIT"
+description = "Reference Q8_0 CPU kernels (quantization, dot product, blocked GEMM) for the gnostral.rs engine; indicative only, not verified against ggml"
+publish = false
+
+[workspace]
+
+[dependencies]
