@@ -6,6 +6,42 @@ repository = "https://github.com/EricLBuehler/mistral.rs"
 state = "REFERENCE_ONLY"
 
 [[project]]
+name = "strata"
+repository = "https://github.com/Niko1221/Strata"
+revision = "fb58e0dbc8399662c0e47c76578c6e878b14f6cf"
+license = "MIT"
+state = "PINNED_UPSTREAM"
+source_path = "vendor/strata"
+modified = false
+patches = []
+snapshot_scope = "Upstream files unchanged; experimental model-derived GGUF excluded"
+reason = "Technical donor for native Rust engine expert residency and chunked prefill absorption"
+inventory = "evidence/runs/strata-vendor-20261008.json"
+
+[[project]]
+name = "mistralrs-strata"
+repository = "https://github.com/EricLBuehler/mistral.rs"
+revision = "0bed3b4ce4f490131696ea268e133f952425bcc0"
+base_revision = "24dbf5c256f232176ee5949485ba264049407fbe"
+branch = "lab03-bonsai"
+license = "MIT"
+state = "PATCHED_UPSTREAM"
+source_path = "vendor/gnostral-strata-worktree/vendor/mistralrs-strata"
+modified = true
+patches = ["patches/strata-residency/20261023-mistralrs-strata-integration.patch"]
+local_commits = [
+  "deec327ed74655890a09c8e25ca55e3c3e5f2fb5",
+  "e5f33d72496d67f453f9a436b93ab8821f8f3f5a",
+  "7e288772d605f66fb9f3c7f4fb4c90ebc4815512",
+  "05cbbb82947886ab7afab775d21590cdda90a3e4",
+  "6f7a6157eb9c67b01df76e5129ea1d2d157ba056",
+  "0bed3b4ce4f490131696ea268e133f952425bcc0",
+]
+snapshot_scope = "Lab mistral.rs 0.9.3 fork used by Q-010/Q-012/Q-013; six lab commits plus an uncommitted 16-file residency integration exported as a patch; ignores build output and model weights; local-only vendor tree"
+reason = "Engine source and residency integration behind the Q-009..Q-013 evidence; public base plus exported patch makes the tree reviewable without publishing 62 MB"
+inventory = "evidence/runs/mistralrs-strata-vendor-20261023.json"
+
+[[project]]
 name = "candle"
 repository = "https://github.com/huggingface/candle"
 state = "REFERENCE_ONLY"
@@ -40,3 +76,19 @@ repository = "https://github.com/cognisoc/unillm"
 revision = "9e20eaf8d8b25191534f531746faa4c025a50453"
 license = "MIT"
 state = "REFERENCE_ONLY"
+
+[[project]]
+name = "deepinfer"
+repository = "https://github.com/deepseek-ai/DeepInfer"
+revision = "UNRESOLVED"
+revision_state = "ARCHIVE_ONLY"
+license = "Apache-2.0"
+state = "REFERENCE_ONLY"
+modified = false
+patches = []
+snapshot_scope = "Public source archive analyzed as a design reference; no upstream tree vendored or built; six upstream git submodules absent from the archive"
+archive_sha256 = "a2f6f0a42e7bb213bb9e30fe997b6778a467829a4d71b94e783d0e6f6fa8af3d"
+tree_digest_sha256 = "30b8f3d319c86e34d14f1979aa288a8534400f754139b85da467d6aa04ee7fc0"
+revision_note = "Snapshot has no .git and therefore no commit id; content is pinned by archive sha256 plus a deterministic tree digest, statically re-verifiable offline. Resolve to a commit only by an operator-authorized history lookup, then keep the digest as the independent check."
+reason = "Design donor for deterministic batch-invariant sampling, confidence-scheduled MTP draft verification, structured-output x speculative rollback, and async-scheduler invariants. Not a runtime candidate: Python 3.12 + torch + CUDA 13, SM100/Ascend-950 and DeepSeek-V4.1-Flash only."
+inventory = "evidence/runs/deepinfer-reference-20261023.json"

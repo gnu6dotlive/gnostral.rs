@@ -1,0 +1,2382 @@
+# gnostral.rs vendor patch — mistralrs-strata residency integration
+#
+# Upstream project: mistral.rs (EricLBuehler/mistral.rs), MIT
+# Public base revision: 24dbf5c256f232176ee5949485ba264049407fbe (mistral.rs 0.9.3 release commit)
+# Lab revision applied: 0bed3b4ce4f490131696ea268e133f952425bcc0 (section lab03-bonsai, six lab commits)
+# Working-tree delta over the lab revision: 16 files, +1325/-10 (uncommitted)
+# Quest: Q-009 STRATA-NATIVE-RESIDENCY-01 / Q-012 feature evidence
+# Purpose: export the residency integration so the public tree records the exact
+#          source behind Q-010/Q-012/Q-013-C without publishing the 62 MB tree.
+# Apply:   git apply --check patches/strata-residency/20261023-mistralrs-strata-integration.patch
+#          (from a clean mistral.rs checkout at the public base revision)
+# This patch is NOT upstream-accepted code. It is a research donor artefact.
+#
+diff --git a/Cargo.lock b/Cargo.lock
+index 99d264223..4f3a29121 100644
+--- a/Cargo.lock
++++ b/Cargo.lock
+@@ -649,14 +649,13 @@ checksum = "ade8366b8bd5ba243f0a58f036cc0ca8a2f069cff1a2351ef1cac6b083e16fc0"
+ [[package]]
+ name = "candle-core"
+ version = "0.11.0"
+-source = "git+https://github.com/huggingface/candle.git?rev=35d7ae7ca5c93e17c77359c3617376b8a72e96a4#35d7ae7ca5c93e17c77359c3617376b8a72e96a4"
+ dependencies = [
+  "accelerate-src",
+  "byteorder",
+  "candle-kernels",
+  "candle-metal-kernels",
+  "candle-ug",
+- "cudarc 0.19.9",
++ "cudarc 0.19.10",
+  "float8",
+  "gemm 0.19.0",
+  "half",
+@@ -682,7 +681,6 @@ dependencies = [
+ [[package]]
+ name = "candle-flash-attn-v3"
+ version = "0.11.0"
+-source = "git+https://github.com/huggingface/candle.git?rev=35d7ae7ca5c93e17c77359c3617376b8a72e96a4#35d7ae7ca5c93e17c77359c3617376b8a72e96a4"
+ dependencies = [
+  "anyhow",
+  "candle-core",
+@@ -695,7 +693,6 @@ dependencies = [
+ [[package]]
+ name = "candle-kernels"
+ version = "0.11.0"
+-source = "git+https://github.com/huggingface/candle.git?rev=35d7ae7ca5c93e17c77359c3617376b8a72e96a4#35d7ae7ca5c93e17c77359c3617376b8a72e96a4"
+ dependencies = [
+  "cudaforge",
+ ]
+@@ -703,7 +700,6 @@ dependencies = [
+ [[package]]
+ name = "candle-metal-kernels"
+ version = "0.11.0"
+-source = "git+https://github.com/huggingface/candle.git?rev=35d7ae7ca5c93e17c77359c3617376b8a72e96a4#35d7ae7ca5c93e17c77359c3617376b8a72e96a4"
+ dependencies = [
+  "block2",
+  "half",
+@@ -718,7 +714,6 @@ dependencies = [
+ [[package]]
+ name = "candle-nn"
+ version = "0.11.0"
+-source = "git+https://github.com/huggingface/candle.git?rev=35d7ae7ca5c93e17c77359c3617376b8a72e96a4#35d7ae7ca5c93e17c77359c3617376b8a72e96a4"
+ dependencies = [
+  "accelerate-src",
+  "candle-core",
+@@ -737,7 +732,6 @@ dependencies = [
+ [[package]]
+ name = "candle-ug"
+ version = "0.11.0"
+-source = "git+https://github.com/huggingface/candle.git?rev=35d7ae7ca5c93e17c77359c3617376b8a72e96a4#35d7ae7ca5c93e17c77359c3617376b8a72e96a4"
+ dependencies = [
+  "ug",
+  "ug-cuda",
+@@ -1279,9 +1273,9 @@ dependencies = [
+ 
+ [[package]]
+ name = "cudarc"
+-version = "0.19.9"
++version = "0.19.10"
+ source = "registry+https://github.com/rust-lang/crates.io-index"
+-checksum = "804764d10e844da09765a7b2ca9641a0851523d1702efb0d7299d73e31b86e80"
++checksum = "7359bf1de037ddada72729c3acec9b040f3468400c6e9e740b01ba0cd2e89562"
+ dependencies = [
+  "float8",
+  "half",
+@@ -3815,6 +3809,7 @@ dependencies = [
+ name = "mistralrs-core"
+ version = "0.9.3"
+ dependencies = [
++ "gnostral-expert-residency",
+  "accelerate-src",
+  "ahash",
+  "akin",
+@@ -8577,3 +8572,7 @@ checksum = "2959ca473aae96a14ecedf501d20b3608d2825ba280d5adb57d651721885b0c2"
+ dependencies = [
+  "zune-core 0.5.1",
+ ]
++
++[[package]]
++name = "gnostral-expert-residency"
++version = "0.0.1"
+diff --git a/Cargo.toml b/Cargo.toml
+index f0551849c..7d44460ba 100644
+--- a/Cargo.toml
++++ b/Cargo.toml
+@@ -220,3 +220,9 @@ debug = true
+ [profile.dev]
+ debug = true
+ opt-level = 3
++
++[patch."https://github.com/huggingface/candle.git"]
++candle-core = { path = "../candle-strata/candle-core" }
++candle-nn = { path = "../candle-strata/candle-nn" }
++candle-flash-attn-v3 = { path = "../candle-strata/candle-flash-attn-v3" }
++candle-metal-kernels = { path = "../candle-strata/candle-metal-kernels" }
+diff --git a/mistralrs-cli/src/commands/run/interactive.rs b/mistralrs-cli/src/commands/run/interactive.rs
+index a0e6bf04b..5691cd7ad 100644
+--- a/mistralrs-cli/src/commands/run/interactive.rs
++++ b/mistralrs-cli/src/commands/run/interactive.rs
+@@ -267,17 +267,31 @@ async fn oneshot_text(mistralrs: Arc<MistralRs>, ctx: OneshotCtx, text: String)
+         adapter,
+     } = ctx;
+     let sender = mistralrs.get_sender(None).unwrap();
+-    let sampling_params = interactive_sample_parameters(&mistralrs);
+-
+-    let mut user_message: IndexMap<String, MessageContent> = IndexMap::new();
+-    user_message.insert("role".to_string(), Either::Left("user".to_string()));
+-    user_message.insert("content".to_string(), Either::Left(text));
+-    let messages = vec![user_message];
++    let lab_raw_oneshot = std::env::var_os("MISTRALRS_LAB_RAW_ONESHOT").is_some();
++    let sampling_params = if lab_raw_oneshot {
++        let mut params = SamplingParams::deterministic();
++        params.max_len = Some(1);
++        params
++    } else {
++        interactive_sample_parameters(&mistralrs)
++    };
+ 
+-    let request_messages = RequestMessage::Chat {
+-        messages,
+-        enable_thinking,
+-        reasoning_effort,
++    let request_messages = if lab_raw_oneshot {
++        RequestMessage::Completion {
++            text,
++            echo_prompt: false,
++            best_of: None,
++        }
++    } else {
++        let mut user_message: IndexMap<String, MessageContent> = IndexMap::new();
++        user_message.insert("role".to_string(), Either::Left("user".to_string()));
++        user_message.insert("content".to_string(), Either::Left(text));
++        let messages = vec![user_message];
++        RequestMessage::Chat {
++            messages,
++            enable_thinking,
++            reasoning_effort,
++        }
+     };
+ 
+     let (tx, mut rx) = channel(10_000);
+@@ -1497,9 +1511,40 @@ async fn stream_assistant_response(
+                 return Err(format!("Got a validation error: {e:?}"));
+             }
+             Response::Done(_) => unreachable!(),
+-            Response::CompletionDone(_) => unreachable!(),
+-            Response::CompletionModelError(_, _) => unreachable!(),
+-            Response::CompletionChunk(_) => unreachable!(),
++            Response::CompletionDone(done) => {
++                denoising_progress.clear();
++                last_usage = Some(done.usage.clone());
++                if let Some(choice) = done.choices.first() {
++                    if !choice.text.is_empty() && first_token_duration.is_none() {
++                        first_token_duration = Some(Instant::now().duration_since(start_ttft));
++                    }
++                    assistant_output.push_str(&choice.text);
++                    print!("{}", choice.text);
++                    io::stdout().flush().unwrap();
++                }
++                break;
++            }
++            Response::CompletionModelError(e, resp) => {
++                denoising_progress.clear();
++                return Err(format!(
++                    "Got a completion model error: {e:?}, response: {resp:?}"
++                ));
++            }
++            Response::CompletionChunk(chunk) => {
++                denoising_progress.clear();
++                let Some(choice) = chunk.choices.first() else {
++                    continue;
++                };
++                if !choice.text.is_empty() && first_token_duration.is_none() {
++                    first_token_duration = Some(Instant::now().duration_since(start_ttft));
++                }
++                assistant_output.push_str(&choice.text);
++                print!("{}", choice.text);
++                io::stdout().flush().unwrap();
++                if choice.finish_reason.is_some() {
++                    break;
++                }
++            }
+             Response::ImageGeneration(_) => unreachable!(),
+             Response::Speech { .. } => unreachable!(),
+             Response::Raw { .. } => unreachable!(),
+diff --git a/mistralrs-core/Cargo.toml b/mistralrs-core/Cargo.toml
+index f34b2dbfd..d10872a54 100644
+--- a/mistralrs-core/Cargo.toml
++++ b/mistralrs-core/Cargo.toml
+@@ -13,6 +13,7 @@ license.workspace = true
+ homepage.workspace = true
+ 
+ [dependencies]
++gnostral-expert-residency = { path = "../../../crates/gnostral-expert-residency", optional = true }
+ anyhow.workspace = true
+ candle-core.workspace = true
+ metrics.workspace = true
+@@ -119,6 +120,7 @@ objc2-metal = { workspace = true, optional = true }
+ candle-metal-kernels = { workspace = true, optional = true }
+ 
+ [features]
++gnostral-expert-residency = ["dep:gnostral-expert-residency"]
+ pyo3_macros = ["pyo3", "mistralrs-mcp/pyo3_macros"]
+ cuda = [
+     "candle-core/cuda",
+diff --git a/mistralrs-core/src/gdn/backend.rs b/mistralrs-core/src/gdn/backend.rs
+index 799496cde..508abe3ce 100644
+--- a/mistralrs-core/src/gdn/backend.rs
++++ b/mistralrs-core/src/gdn/backend.rs
+@@ -900,7 +900,9 @@ fn causal_conv1d_update(
+     let total_len = hidden_new.dim(2)?;
+     for i in (total_len - seq_len)..total_len {
+         let window = hidden_new.narrow(2, i + 1 - dims.conv_kernel_size, dims.conv_kernel_size)?;
+-        let out = (window * weight.unsqueeze(0)?)?.sum(D::Minus1)?;
++        let out = window
++            .broadcast_mul(&weight.unsqueeze(0)?)?
++            .sum(D::Minus1)?;
+         conv_outputs.push(out);
+     }
+     candle_nn::ops::silu(&Tensor::stack(&conv_outputs, 2)?)?.transpose(1, 2)
+@@ -1039,7 +1041,9 @@ fn causal_conv1d_full(
+     let mut conv_outputs = Vec::with_capacity(seq_len);
+     for i in 0..seq_len {
+         let window = padded_t.narrow(2, i, dims.conv_kernel_size)?;
+-        let out = (window * weight.unsqueeze(0)?)?.sum(D::Minus1)?;
++        let out = window
++            .broadcast_mul(&weight.unsqueeze(0)?)?
++            .sum(D::Minus1)?;
+         conv_outputs.push(out);
+     }
+     candle_nn::ops::silu(&Tensor::stack(&conv_outputs, 2)?)?.transpose(1, 2)
+@@ -1934,6 +1938,76 @@ mod tests {
+         assert_close(&one_shot_cache.conv_state, &chunked_cache.conv_state)
+     }
+ 
++    #[test]
++    fn causal_conv1d_prefill_bf16_supports_batched_fallback() -> CandleResult<()> {
++        let dev = Device::Cpu;
++        let dims = dims(2, 4, 5, 3);
++        let batch_size = 3;
++        let seq_len = 2;
++        let x = Tensor::from_vec(
++            patterned(batch_size * seq_len * dims.conv_dim, 13, 0.08, 0.01),
++            (batch_size, seq_len, dims.conv_dim),
++            &dev,
++        )?
++        .to_dtype(DType::BF16)?;
++        let weight = Tensor::from_vec(
++            patterned(dims.conv_dim * dims.conv_kernel_size, 14, 0.05, -0.01),
++            (dims.conv_dim, 1, dims.conv_kernel_size),
++            &dev,
++        )?
++        .to_dtype(DType::BF16)?;
++        let conv_state = Tensor::from_vec(
++            patterned(
++                batch_size * dims.conv_dim * dims.conv_kernel_size,
++                15,
++                0.03,
++                0.0,
++            ),
++            (batch_size, dims.conv_dim, dims.conv_kernel_size),
++            &dev,
++        )?
++        .to_dtype(DType::BF16)?;
++        let recurrent_state = Tensor::zeros(
++            (
++                batch_size,
++                dims.num_v_heads,
++                dims.head_k_dim,
++                dims.head_v_dim,
++            ),
++            DType::F32,
++            &dev,
++        )?;
++        let mut fast_cache = GdnLayerCache {
++            conv_state: conv_state.clone(),
++            recurrent_state: recurrent_state.clone(),
++            state_layout: RecurrentStateLayout::GdnKeyMajor,
++            slots: None,
++            pending_transitions: None,
++            deferred_state: None,
++        };
++        let mut reference_cache = GdnLayerCache {
++            conv_state,
++            recurrent_state,
++            state_layout: RecurrentStateLayout::GdnKeyMajor,
++            slots: None,
++            pending_transitions: None,
++            deferred_state: None,
++        };
++
++        let fast = causal_conv1d_full(&x, &weight, &dims, &mut fast_cache)?;
++        let reference = causal_conv1d_update_reference(&x, &weight, &dims, &mut reference_cache)?;
++
++        assert_eq!(fast.dims(), [batch_size, seq_len, dims.conv_dim]);
++        assert_close(
++            &fast.to_dtype(DType::F32)?,
++            &reference.to_dtype(DType::F32)?,
++        )?;
++        assert_close(
++            &fast_cache.conv_state.to_dtype(DType::F32)?,
++            &reference_cache.conv_state.to_dtype(DType::F32)?,
++        )
++    }
++
+     #[test]
+     fn decode_recurrence_cpu_matches_tensor_path() -> CandleResult<()> {
+         run_decode_case(dims(2, 4, 5, 3), 2)?;
+diff --git a/mistralrs-core/src/kv_cache/hybrid_cache.rs b/mistralrs-core/src/kv_cache/hybrid_cache.rs
+index 1317b87e7..a21687f3f 100644
+--- a/mistralrs-core/src/kv_cache/hybrid_cache.rs
++++ b/mistralrs-core/src/kv_cache/hybrid_cache.rs
+@@ -468,6 +468,17 @@ pub struct RecurrentStatePool {
+ /// graph pad slot, so growth (which invalidates captured graphs) only happens past that.
+ const INITIAL_POOL_CAPACITY: usize = 9;
+ 
++// Lab hook: cap the initial recurrent-state pool (per SSM layer, F32) for residency
++// experiments. The pool grows dynamically past this, so smaller values only trade
++// pre-captured-graph batch range for VRAM; minimum keeps one graph pad slot plus one sequence.
++fn lab_initial_pool_capacity() -> usize {
++    std::env::var("MISTRALRS_LAB_RECURRENT_POOL_SLOTS")
++        .ok()
++        .and_then(|v| v.parse::<usize>().ok())
++        .filter(|&n| n >= 2)
++        .unwrap_or(INITIAL_POOL_CAPACITY)
++}
++
+ #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+ enum RecurrentSlotOwner {
+     Sequence(usize),
+@@ -514,7 +525,7 @@ impl RecurrentStatePool {
+             recurrent_dtype,
+             device,
+         } = config;
+-        let capacity = INITIAL_POOL_CAPACITY;
++        let capacity = lab_initial_pool_capacity();
+         let checkpoint_lanes = 1;
+ 
+         let conv_state = Tensor::zeros((capacity, conv_dim, conv_width), conv_dtype, device)?;
+@@ -1126,11 +1137,11 @@ impl HybridCache {
+             device_state_indices: Vec::new(),
+             checkpoint_lanes: 1,
+             speculative_storage: RecurrentSpeculativeStorage::FullCheckpoints,
+-            committed_lanes: vec![0; INITIAL_POOL_CAPACITY],
+-            slot_owners: vec![None; INITIAL_POOL_CAPACITY],
+-            initialized_slots: vec![false; INITIAL_POOL_CAPACITY],
+-            pristine_zero_slots: vec![true; INITIAL_POOL_CAPACITY],
+-            last_released_sequence_owners: vec![None; INITIAL_POOL_CAPACITY],
++            committed_lanes: vec![0; lab_initial_pool_capacity()],
++            slot_owners: vec![None; lab_initial_pool_capacity()],
++            initialized_slots: vec![false; lab_initial_pool_capacity()],
++            pristine_zero_slots: vec![true; lab_initial_pool_capacity()],
++            last_released_sequence_owners: vec![None; lab_initial_pool_capacity()],
+             recurrent_storage_generation: 0,
+             recurrent_storage_locked: false,
+             graph_pad_slot: None,
+diff --git a/mistralrs-core/src/models/qwen3_moe.rs b/mistralrs-core/src/models/qwen3_moe.rs
+index 5d2cd17a0..85dba0e2d 100644
+--- a/mistralrs-core/src/models/qwen3_moe.rs
++++ b/mistralrs-core/src/models/qwen3_moe.rs
+@@ -10,6 +10,8 @@ use mistralrs_quant::{
+ use serde::{Deserialize, Serialize};
+ use std::{collections::HashMap, sync::Arc};
+ 
++#[cfg(feature = "gnostral-expert-residency")]
++use crate::moe::{ExpertResidencyRequest, ExpertResidencyRuntime};
+ use crate::moe::{MoEExperts, MoEExpertsConfig};
+ use crate::{
+     amoe::AnyMoeBaseModelMixin,
+@@ -360,6 +362,10 @@ impl MoeMlp {
+         layer_device: Device,
+         comm: &Arc<mistralrs_quant::Comm>,
+         loading_isq: bool,
++        #[cfg(feature = "gnostral-expert-residency")] residency: Option<
++            &Arc<ExpertResidencyRuntime>,
++        >,
++        #[cfg(feature = "gnostral-expert-residency")] layer_id: u32,
+     ) -> Result<Self> {
+         let gate_vb = vb.pp("gate").set_device(layer_device.clone());
+         let gate = layers::linear_no_bias(cfg.hidden_size, cfg.num_experts, gate_vb.clone())?;
+@@ -376,7 +382,30 @@ impl MoeMlp {
+             expert_proj_names: crate::moe::ExpertProjNames::DEFAULT,
+         };
+ 
+-        // Load experts with automatic backend selection
++        #[cfg(feature = "gnostral-expert-residency")]
++        let experts = if let Some(cache) = residency {
++            MoEExperts::new_resident(
++                &moe_cfg,
++                vb,
++                layer_id,
++                layer_device,
++                comm,
++                loading_isq,
++                cfg.hidden_act,
++                cache.clone(),
++            )?
++        } else {
++            MoEExperts::new(
++                &moe_cfg,
++                vb,
++                layer_device,
++                comm,
++                loading_isq,
++                &cfg.quantization_config,
++                cfg.hidden_act,
++            )?
++        };
++        #[cfg(not(feature = "gnostral-expert-residency"))]
+         let experts = MoEExperts::new(
+             &moe_cfg,
+             vb,
+@@ -463,6 +492,9 @@ impl DecoderLayer {
+         paged_attn: Option<PagedAttention>,
+         real_device: Device,
+         comm: &Arc<mistralrs_quant::Comm>,
++        #[cfg(feature = "gnostral-expert-residency")] residency: Option<
++            &Arc<ExpertResidencyRuntime>,
++        >,
+     ) -> Result<Self> {
+         let self_attn = Attention::new(
+             rotary_emb,
+@@ -484,7 +516,18 @@ impl DecoderLayer {
+                 .cloned()
+                 .unwrap_or(real_device);
+ 
+-            MoeOrMlp::Moe(MoeMlp::new(cfg, vb, layer_device, comm, loading_isq)?)
++            MoeOrMlp::Moe(MoeMlp::new(
++                cfg,
++                vb,
++                layer_device,
++                comm,
++                loading_isq,
++                #[cfg(feature = "gnostral-expert-residency")]
++                residency,
++                #[cfg(feature = "gnostral-expert-residency")]
++                u32::try_from(layer_idx)
++                    .map_err(|_| candle_core::Error::Msg("expert layer index overflow".into()))?,
++            )?)
+         } else {
+             MoeOrMlp::Mlp(Mlp::new(
+                 cfg,
+@@ -575,6 +618,39 @@ impl Model {
+         normal_loading_metadata: NormalLoadingMetadata,
+         attention_mechanism: AttentionImplementation,
+     ) -> Result<Self> {
++        #[cfg(feature = "gnostral-expert-residency")]
++        let residency = if let Some(request) = ExpertResidencyRequest::from_environment()? {
++            use sha2::{Digest, Sha256};
++            if !normal_loading_metadata.real_device.is_cuda()
++                || normal_loading_metadata.loading_isq
++                || cfg.decoder_sparse_step != 1
++                || !cfg.mlp_only_layers.is_empty()
++                || cfg.quantization_config.is_some()
++            {
++                candle_core::bail!("native residency pilot requires unsharded CUDA Qwen3 GGUF with every layer using standard experts");
++            }
++            let source = vb_m.weight_source().ok_or_else(|| {
++                candle_core::Error::Msg("native residency requires GGUF source identity".into())
++            })?;
++            let bytes = source.single_file_gguf_bytes().ok_or_else(|| {
++                candle_core::Error::Msg(
++                    "native residency pilot requires a single-file GGUF source".into(),
++                )
++            })?;
++            let hash = format!("{:x}", Sha256::digest(bytes));
++            let layers = u32::try_from(cfg.num_hidden_layers)
++                .map_err(|_| candle_core::Error::Msg("layer count overflow".into()))?;
++            let experts = u32::try_from(cfg.num_experts)
++                .map_err(|_| candle_core::Error::Msg("expert count overflow".into()))?;
++            Some(Arc::new(ExpertResidencyRuntime::new(
++                request.validate(&hash, layers, experts)?,
++                layers,
++                experts,
++                normal_loading_metadata.real_device.clone(),
++            )?))
++        } else {
++            None
++        };
+         if let Some(ref quant_cfg) = &cfg.quantization_config {
+             tracing::info!(
+                 "Using {} quantization: {}.",
+@@ -650,8 +726,14 @@ impl Model {
+                 paged_attn,
+                 normal_loading_metadata.real_device.clone(),
+                 &comm,
++                #[cfg(feature = "gnostral-expert-residency")]
++                residency.as_ref(),
+             )
+         })?;
++        #[cfg(feature = "gnostral-expert-residency")]
++        if let Some(cache) = &residency {
++            cache.finish_loading()?;
++        }
+         let norm = RmsNorm::new(
+             cfg.hidden_size,
+             cfg.rms_norm_eps,
+diff --git a/mistralrs-core/src/moe/experts/backends.rs b/mistralrs-core/src/moe/experts/backends.rs
+index d03113bbf..3380bab96 100644
+--- a/mistralrs-core/src/moe/experts/backends.rs
++++ b/mistralrs-core/src/moe/experts/backends.rs
+@@ -1929,3 +1929,50 @@ mod nvfp4_tests {
+         Ok(())
+     }
+ }
++
++#[cfg(feature = "gnostral-expert-residency")]
++pub(super) struct ResidentExpertsWeights {
++    pub(super) layer_id: u32,
++    pub(super) cache: Arc<super::residency::ExpertResidencyRuntime>,
++}
++#[cfg(feature = "gnostral-expert-residency")]
++impl ResidentExpertsWeights {
++    pub(super) fn forward_impl(
++        &self,
++        forward: &MoEForward,
++        config: MoEForwardConfig,
++    ) -> Result<Tensor> {
++        if forward.lora.is_some() || mistralrs_quant::has_active_lora_execution() {
++            candle_core::bail!("LoRA is unsupported by native expert residency pilot");
++        }
++        if forward.topk_ids.dims() != [forward.shape.num_tokens, config.num_experts_per_tok]
++            || forward.topk_weights.dims() != forward.topk_ids.dims()
++        {
++            candle_core::bail!("expert route tensor geometry mismatch");
++        }
++        let ids = forward.topk_ids.to_device(&Device::Cpu)?.to_vec2::<u32>()?;
++        let weights = forward
++            .topk_weights
++            .to_dtype(DType::F32)?
++            .to_device(&Device::Cpu)?
++            .to_vec2::<f32>()?;
++        let mut routes = Vec::new();
++        for (token, (ids, weights)) in ids.iter().zip(&weights).enumerate() {
++            for (ordinal, (&expert, &weight)) in ids.iter().zip(weights).enumerate() {
++                routes.push(gnostral_expert_residency::Route {
++                    token,
++                    ordinal,
++                    key: gnostral_expert_residency::ExpertKey {
++                        layer: self.layer_id,
++                        expert,
++                    },
++                    weight,
++                });
++            }
++        }
++        self.cache
++            .forward(self.layer_id, forward.xs_flat, &routes, |xs| {
++                xs.apply(&config.act)
++            })
++    }
++}
+diff --git a/mistralrs-core/src/moe/experts/mod.rs b/mistralrs-core/src/moe/experts/mod.rs
+index df650b411..008518fb0 100644
+--- a/mistralrs-core/src/moe/experts/mod.rs
++++ b/mistralrs-core/src/moe/experts/mod.rs
+@@ -6,6 +6,12 @@
+ 
+ mod backends;
+ mod checkpoint;
++#[cfg(feature = "gnostral-expert-residency")]
++pub(crate) mod residency;
++#[cfg(feature = "gnostral-expert-residency")]
++mod residency_observation;
++#[cfg(all(test, feature = "gnostral-expert-residency"))]
++mod residency_tests;
+ pub(crate) use checkpoint::{expert_stack_available, rebuild_expert_projection};
+ mod config;
+ mod forward;
+@@ -47,6 +53,8 @@ pub struct MoEExperts {
+ }
+ 
+ enum MoEExpertsBackendImpl {
++    #[cfg(feature = "gnostral-expert-residency")]
++    Resident(backends::ResidentExpertsWeights),
+     Fused(FusedExpertsWeights),
+     #[cfg(feature = "cutile")]
+     Cutile(CutileExpertsWeights),
+@@ -60,6 +68,8 @@ enum MoEExpertsBackendImpl {
+ impl MoEExpertsBackendImpl {
+     fn forward(&self, forward: &MoEForward, config: MoEForwardConfig) -> Result<Tensor> {
+         match self {
++            #[cfg(feature = "gnostral-expert-residency")]
++            Self::Resident(w) => w.forward_impl(forward, config),
+             Self::Fused(w) => w.forward_impl(forward, config),
+             #[cfg(feature = "cutile")]
+             Self::Cutile(w) => w
+@@ -95,6 +105,67 @@ fn check_isq_gather_support() -> Result<()> {
+ }
+ 
+ impl MoEExperts {
++    #[cfg(feature = "gnostral-expert-residency")]
++    pub(crate) fn new_resident(
++        cfg: &MoEExpertsConfig,
++        vb: ShardedVarBuilder,
++        layer_id: u32,
++        layer_device: Device,
++        comm: &Arc<mistralrs_quant::Comm>,
++        loading_isq: bool,
++        act: Activation,
++        cache: Arc<residency::ExpertResidencyRuntime>,
++    ) -> Result<Self> {
++        if comm.world_size() != 1 || loading_isq || mistralrs_quant::has_active_lora_execution() {
++            candle_core::bail!("expert residency pilot does not support sharding, ISQ or LoRA");
++        }
++        // The primary runtime device remains CUDA. CPU-mapped layers use
++        // quantized GGUF backing only; they can never receive CUDA slots.
++        cache.require_device(&layer_device)?;
++        let experts_vb = vb.pp("experts").set_device(Device::Cpu);
++        if let Some(source) = experts_vb.weight_source() {
++            let keys = mistralrs_quant::QuantizedExpertKeys::new(&experts_vb.prefix());
++            if [&keys.gate, &keys.up, &keys.down]
++                .iter()
++                .any(|key| source.contains(&format!("{key}.bias")))
++            {
++                candle_core::bail!(
++                    "biased expert projections are unsupported by native residency pilot"
++                );
++            }
++        }
++
++        let fast =
++            FastExpertsWeights::from_weight_source(cfg, &experts_vb, comm)?.ok_or_else(|| {
++                candle_core::Error::Msg(
++                    "expert residency requires GGUF quantized weight stacks".into(),
++                )
++            })?;
++        let get = |method: &Arc<dyn mistralrs_quant::QuantMethod>| {
++            method.get_qtensor().ok_or_else(|| {
++                candle_core::Error::Msg("expert projection has no raw QTensor".into())
++            })
++        };
++        let weights = residency::ExpertProjectionSet {
++            gate: get(&fast.fused_gate_proj)?,
++            up: get(&fast.fused_up_proj)?,
++            down: get(&fast.fused_down_proj)?,
++        };
++        if weights.gate.shape().dims()
++            != [cfg.num_experts, cfg.moe_intermediate_size, cfg.hidden_size]
++        {
++            candle_core::bail!("expert GGUF shape disagrees with model configuration");
++        }
++        cache.register_on(layer_id, weights, &layer_device)?;
++        Ok(Self::from_backend(
++            MoEExpertsBackendImpl::Resident(backends::ResidentExpertsWeights { layer_id, cache }),
++            None,
++            cfg,
++            comm,
++            act,
++        ))
++    }
++
+     /// Create MoEExperts for a standard model: experts live under `vb.pp("experts")`.
+     pub fn new(
+         cfg: &MoEExpertsConfig,
+diff --git a/mistralrs-core/src/moe/experts/residency.rs b/mistralrs-core/src/moe/experts/residency.rs
+new file mode 100644
+index 000000000..2baaef6c3
+--- /dev/null
++++ b/mistralrs-core/src/moe/experts/residency.rs
+@@ -0,0 +1,575 @@
++//! Opt-in native expert residency. Configuration is read once per Qwen3 model.
++use super::residency_observation::{ResidencyCounters, ResidencyObservation};
++use candle_core::Result;
++use gnostral_expert_residency::ExpertKey;
++use serde::Deserialize;
++use std::collections::BTreeSet;
++use std::time::Instant;
++
++pub(crate) struct ExpertResidencyConfig {
++    pub budget_bytes: u64,
++    pub profile: Vec<ExpertKey>,
++}
++#[derive(Deserialize)]
++#[serde(deny_unknown_fields)]
++struct Profile {
++    schema: u32,
++    model_sha256: String,
++    layers: u32,
++    experts_per_layer: u32,
++    ranking: Vec<RankedExpert>,
++}
++#[derive(Deserialize)]
++#[serde(deny_unknown_fields)]
++struct RankedExpert {
++    layer: u32,
++    expert: u32,
++}
++
++impl ExpertResidencyConfig {
++    pub(super) fn from_values(
++        budget: Option<&str>,
++        profile: Option<&str>,
++        model_sha256: &str,
++        layers: u32,
++        experts: u32,
++    ) -> Result<Option<Self>> {
++        let Some(budget) = budget else {
++            if profile.is_some() {
++                candle_core::bail!("expert profile requires GNOSTRAL_EXPERT_CACHE_BYTES");
++            }
++            return Ok(None);
++        };
++        if budget.is_empty() || !budget.bytes().all(|b| b.is_ascii_digit()) {
++            candle_core::bail!("GNOSTRAL_EXPERT_CACHE_BYTES must be decimal bytes");
++        }
++        let budget_bytes = budget
++            .parse::<u64>()
++            .map_err(|e| candle_core::Error::Msg(e.to_string()))?;
++        if budget_bytes == 0 {
++            return Ok(None);
++        }
++        let text = profile.ok_or_else(|| {
++            candle_core::Error::Msg("nonzero expert cache requires GNOSTRAL_EXPERT_PROFILE".into())
++        })?;
++        let profile: Profile = serde_json::from_str(text)
++            .map_err(|e| candle_core::Error::Msg(format!("invalid expert profile: {e}")))?;
++        if profile.schema != 1
++            || profile.model_sha256.len() != 64
++            || !profile
++                .model_sha256
++                .bytes()
++                .all(|b| b.is_ascii_hexdigit() && !b.is_ascii_uppercase())
++            || profile.model_sha256 != model_sha256
++            || profile.layers != layers
++            || profile.experts_per_layer != experts
++            || layers == 0
++            || experts == 0
++        {
++            candle_core::bail!("expert profile schema, model hash or geometry mismatch");
++        }
++        let mut seen = BTreeSet::new();
++        let mut ranking = Vec::new();
++        for e in profile.ranking {
++            let key = ExpertKey {
++                layer: e.layer,
++                expert: e.expert,
++            };
++            if key.layer >= layers || key.expert >= experts || !seen.insert(key) {
++                candle_core::bail!("expert profile contains invalid or duplicate ranking entries");
++            }
++            ranking.push(key);
++        }
++        Ok(Some(Self {
++            budget_bytes,
++            profile: ranking,
++        }))
++    }
++}
++
++use candle_core::{
++    quantized::{GgmlDType, QMatMul, QTensor},
++    DType, Device, Module, Tensor,
++};
++use gnostral_expert_residency::{partition_routes, CachePlan, ExpertSize, ResidencyTable, Route};
++use std::{
++    collections::BTreeMap,
++    sync::{Arc, Mutex, MutexGuard},
++};
++
++#[derive(Clone)]
++pub(super) struct ExpertProjectionSet {
++    pub gate: Arc<QTensor>,
++    pub up: Arc<QTensor>,
++    pub down: Arc<QTensor>,
++}
++impl ExpertProjectionSet {
++    fn tensors(&self) -> [&Arc<QTensor>; 3] {
++        [&self.gate, &self.up, &self.down]
++    }
++    fn slice_to(&self, expert: usize, device: &Device) -> Result<Self> {
++        Ok(Self {
++            gate: Arc::new(self.gate.expert_slice_to(expert, device)?),
++            up: Arc::new(self.up.expert_slice_to(expert, device)?),
++            down: Arc::new(self.down.expert_slice_to(expert, device)?),
++        })
++    }
++    fn compute(
++        &self,
++        xs: &Tensor,
++        activation: &impl Fn(&Tensor) -> Result<Tensor>,
++    ) -> Result<Tensor> {
++        let gate = QMatMul::from_arc(self.gate.clone())?.forward(xs)?;
++        let up = QMatMul::from_arc(self.up.clone())?.forward(xs)?;
++        QMatMul::from_arc(self.down.clone())?.forward(&(activation(&gate)? * up)?)
++    }
++    fn padded_bytes(&self, experts: u32) -> Result<u64> {
++        let mut bytes = 0u64;
++        for q in self.tensors() {
++            // Exact formula in pinned Candle load_quantized. Verify against each owned slice.
++            let logical = q.storage_size_in_bytes() as u64 / u64::from(experts);
++            let padding = 512u64
++                .checked_mul(q.dtype().type_size() as u64)
++                .ok_or_else(|| error("padding overflow"))?
++                / q.dtype().block_size() as u64;
++            bytes = bytes
++                .checked_add(logical)
++                .and_then(|n| n.checked_add(padding))
++                .ok_or_else(|| error("allocation byte sum overflow"))?;
++        }
++        Ok(bytes)
++    }
++    fn allocation_bytes(&self) -> Result<u64> {
++        self.tensors().iter().try_fold(0u64, |sum, q| {
++            sum.checked_add(
++                q.cuda_allocation_bytes()
++                    .ok_or_else(|| error("CUDA allocation accounting unavailable"))?,
++            )
++            .ok_or_else(|| error("allocation byte sum overflow"))
++        })
++    }
++}
++fn error(message: &str) -> candle_core::Error {
++    candle_core::Error::Msg(message.into())
++}
++fn residency_error(e: gnostral_expert_residency::ResidencyError) -> candle_core::Error {
++    candle_core::Error::Msg(e.to_string())
++}
++
++struct RuntimeState {
++    host: BTreeMap<u32, ExpertProjectionSet>,
++    // Only GPU-mapped layers can acquire CUDA cache slots. CPU-mapped layers
++    // remain quantized on host and execute on CPU, never via PCIe uploads.
++    cpu_layers: BTreeSet<u32>,
++    resident: BTreeMap<ExpertKey, ExpertProjectionSet>,
++    table: Option<ResidencyTable>,
++    allocated_bytes: u64,
++    observation: ResidencyCounters,
++    released: bool,
++}
++/// Model-scoped owner; one admission plan and one byte budget across every layer.
++pub(crate) struct ExpertResidencyRuntime {
++    config: ExpertResidencyConfig,
++    layers: u32,
++    experts: u32,
++    device: Device,
++    state: Mutex<RuntimeState>,
++}
++impl ExpertResidencyRuntime {
++    pub(crate) fn new(
++        config: ExpertResidencyConfig,
++        layers: u32,
++        experts: u32,
++        device: Device,
++    ) -> Result<Self> {
++        if layers == 0 || experts == 0 {
++            candle_core::bail!("empty expert residency geometry");
++        }
++        Ok(Self {
++            config,
++            layers,
++            experts,
++            device,
++            state: Mutex::new(RuntimeState {
++                host: BTreeMap::new(),
++                cpu_layers: BTreeSet::new(),
++                resident: BTreeMap::new(),
++                table: None,
++                allocated_bytes: 0,
++                observation: ResidencyCounters::default(),
++                released: false,
++            }),
++        })
++    }
++    pub(super) fn require_device(&self, device: &Device) -> Result<()> {
++        if !(device.is_cpu() || device.same_device(&self.device)) {
++            candle_core::bail!(
++                "expert residency supports CPU layers or the one pinned CUDA device"
++            );
++        }
++        Ok(())
++    }
++    fn state(&self) -> Result<MutexGuard<'_, RuntimeState>> {
++        self.state
++            .lock()
++            .map_err(|_| error("expert residency state poisoned"))
++    }
++    #[cfg(test)]
++    pub(super) fn register(&self, layer: u32, weights: ExpertProjectionSet) -> Result<()> {
++        self.register_on(layer, weights, &self.device)
++    }
++    pub(super) fn register_on(
++        &self,
++        layer: u32,
++        weights: ExpertProjectionSet,
++        layer_device: &Device,
++    ) -> Result<()> {
++        self.require_device(layer_device)?;
++        if layer >= self.layers {
++            candle_core::bail!("expert layer out of range");
++        }
++        let (e, n, k) = weights.gate.shape().dims3()?;
++        if e != self.experts as usize
++            || n == 0
++            || k == 0
++            || weights.up.shape() != weights.gate.shape()
++            || weights.down.shape().dims() != [e, k, n]
++        {
++            candle_core::bail!("expert gate/up/down geometry mismatch");
++        }
++        for q in weights.tensors() {
++            if !q.device().is_cpu()
++                || !matches!(
++                    q.dtype(),
++                    GgmlDType::Q2K
++                        | GgmlDType::Q3K
++                        | GgmlDType::Q4K
++                        | GgmlDType::Q5K
++                        | GgmlDType::Q6K
++                        | GgmlDType::Q4_0
++                        | GgmlDType::Q4_1
++                        | GgmlDType::Q5_0
++                        | GgmlDType::Q5_1
++                        | GgmlDType::Q8_0
++                )
++            {
++                candle_core::bail!("residency requires untransformed CPU GGUF quantized stacks");
++            }
++            let dims = q.shape().dims();
++            let expected = dims[0]
++                .checked_mul(dims[1])
++                .and_then(|n| n.checked_mul(dims[2] / q.dtype().block_size()))
++                .and_then(|n| n.checked_mul(q.dtype().type_size()))
++                .ok_or_else(|| error("expert packed byte size overflow"))?;
++            if expected != q.storage_size_in_bytes() {
++                candle_core::bail!("expert packed byte size does not match geometry");
++            }
++            if q.shape().dims()[2] % q.dtype().block_size() != 0
++                || q.storage_size_in_bytes() % e != 0
++            {
++                candle_core::bail!("expert stack is not block-aligned");
++            }
++        }
++        let mut state = self.state()?;
++        if state.table.is_some() || state.host.contains_key(&layer) {
++            candle_core::bail!("expert layer already registered or loading already finished");
++        }
++        if state.released {
++            candle_core::bail!("expert residency is already released");
++        }
++        let logical_bytes = weights.tensors().iter().try_fold(0u64, |sum, q| {
++            sum.checked_add(q.storage_size_in_bytes() as u64)
++                .ok_or_else(|| error("host quantized weight byte counter overflow"))
++        })?;
++        state.observation.host_bytes(logical_bytes)?;
++        if layer_device.is_cpu() {
++            state.cpu_layers.insert(layer);
++        }
++        state.host.insert(layer, weights);
++        Ok(())
++    }
++    pub(crate) fn finish_loading(&self) -> Result<()> {
++        let mut state = self.state()?;
++        if state.released || state.table.is_some() || state.host.len() != self.layers as usize {
++            candle_core::bail!("expert layers incomplete or already initialized");
++        }
++        let mut sizes = Vec::new();
++        for (&layer, weights) in &state.host {
++            let bytes = weights.padded_bytes(self.experts)?;
++            for expert in 0..self.experts {
++                sizes.push(ExpertSize {
++                    key: ExpertKey { layer, expert },
++                    bytes,
++                });
++            }
++        }
++        // The complete profile is validated at ingress. Only the ranking
++        // of GPU-mapped layers participates in CUDA admission; CPU layers
++        // can never consume budget or accidentally be uploaded.
++        let admitted_profile = self
++            .config
++            .profile
++            .iter()
++            .copied()
++            .filter(|key| !state.cpu_layers.contains(&key.layer))
++            .collect::<Vec<_>>();
++        tracing::info!(
++            cpu_layers = state.cpu_layers.len(),
++            gpu_layers = self.layers as usize - state.cpu_layers.len(),
++            excluded_cpu_profile_entries = self.config.profile.len() - admitted_profile.len(),
++            "native expert residency mixed-device admission"
++        );
++        let plan = CachePlan::build(
++            self.layers,
++            self.experts,
++            &sizes,
++            &admitted_profile,
++            self.config.budget_bytes,
++        )
++        .map_err(residency_error)?;
++        let slots = plan.slots().to_vec();
++        let mut table = ResidencyTable::new(plan);
++        let mut resident = BTreeMap::new();
++        let mut allocated_bytes = 0u64;
++        for slot in slots {
++            if !self.device.is_cuda() {
++                candle_core::bail!("resident expert slots require CUDA");
++            }
++            let ticket = table.begin_upload(slot.key).map_err(residency_error)?;
++            state.observation.begin_upload(slot.bytes)?;
++            let start = Instant::now();
++            let upload = (|| {
++                let tensors =
++                    state.host[&slot.key.layer].slice_to(slot.key.expert as usize, &self.device)?;
++                self.device.synchronize()?;
++                let bytes = tensors.allocation_bytes()?;
++                if bytes != slot.bytes {
++                    candle_core::bail!(
++                        "actual expert allocation differs from planned padded bytes"
++                    );
++                }
++                Ok((tensors, bytes))
++            })();
++            match upload {
++                Ok((tensors, bytes)) => {
++                    table
++                        .complete_upload(ticket, true)
++                        .map_err(residency_error)?;
++                    allocated_bytes = allocated_bytes
++                        .checked_add(bytes)
++                        .ok_or_else(|| error("resident allocation overflow"))?;
++                    resident.insert(slot.key, tensors);
++                    state.observation.complete_upload(bytes, start.elapsed())?;
++                }
++                Err(e) => {
++                    let _ = table.complete_upload(ticket, false);
++                    state.observation.failed_upload()?;
++                    return Err(e);
++                }
++            }
++        }
++        state.table = Some(table);
++        state.resident = resident;
++        state.allocated_bytes = allocated_bytes;
++        let receipt = state.observation.snapshot(
++            Some(state.allocated_bytes),
++            state
++                .table
++                .as_ref()
++                .map_or(0, ResidencyTable::active_leases),
++            false,
++        );
++        tracing::info!(gpu_allocated_bytes = ?receipt.gpu_allocated_bytes,
++            host_weight_logical_bytes = ?receipt.cpu_weight_bytes,
++            upload_bytes = receipt.upload_bytes, upload_ms = ?receipt.upload_ms,
++            "native expert residency engine counters initialized");
++        Ok(())
++    }
++    pub(crate) fn snapshot(&self) -> Result<ResidencyObservation> {
++        let state = self.state()?;
++        Ok(state.observation.snapshot(
++            state.table.as_ref().map(|_| state.allocated_bytes),
++            state
++                .table
++                .as_ref()
++                .map_or(0, ResidencyTable::active_leases),
++            state.released,
++        ))
++    }
++    /// Engine-owned drain. A driver sync error never generates a false reclaim receipt.
++    pub(crate) fn drain_and_release(&self) -> Result<()> {
++        let mut state = self.state()?;
++        if state.released {
++            return Ok(());
++        }
++        if let Some(table) = state.table.as_ref() {
++            if table.active_leases() != 0 {
++                candle_core::bail!("cannot drain expert residency with outstanding leases");
++            }
++        }
++        // Hold all projection Arcs until synchronization confirms owned CUDA work finished.
++        self.device.synchronize()?;
++        if let Some(table) = state.table.as_mut() {
++            table.close().map_err(residency_error)?;
++        }
++        state.resident.clear();
++        state.host.clear();
++        state.cpu_layers.clear();
++        state.allocated_bytes = 0;
++        state.observation.cpu_weight_bytes = 0;
++        state.released = true;
++        Ok(())
++    }
++    pub(super) fn allocated_bytes(&self) -> Result<u64> {
++        Ok(self.state()?.allocated_bytes)
++    }
++    pub(super) fn is_resident(&self, key: ExpertKey) -> Result<bool> {
++        Ok(self.state()?.resident.contains_key(&key))
++    }
++    pub(super) fn forward(
++        &self,
++        layer: u32,
++        xs: &Tensor,
++        routes: &[Route],
++        activation: impl Fn(&Tensor) -> Result<Tensor>,
++    ) -> Result<Tensor> {
++        let (tokens, hidden) = xs.dims2()?;
++        let mut state = self.state()?;
++        let host = state
++            .host
++            .get(&layer)
++            .ok_or_else(|| error("expert layer unavailable"))?
++            .clone();
++        if hidden != host.gate.shape().dims()[2] {
++            candle_core::bail!("expert input dimension mismatch");
++        }
++        if routes
++            .iter()
++            .any(|r| r.key.layer != layer || r.token >= tokens)
++        {
++            candle_core::bail!("route token or layer out of range");
++        }
++        let is_cpu_layer = state.cpu_layers.contains(&layer);
++        let table = state
++            .table
++            .as_mut()
++            .ok_or_else(|| error("expert loading not finished"))?;
++        table
++            .validate_key(ExpertKey { layer, expert: 0 })
++            .map_err(residency_error)?;
++        let partition = partition_routes(table, routes).map_err(residency_error)?;
++        if is_cpu_layer && !partition.gpu.is_empty() {
++            candle_core::bail!("CPU-mapped layer unexpectedly owns CUDA expert leases");
++        }
++        state
++            .observation
++            .route(partition.gpu.len(), partition.cpu.len())?;
++        let mut ordered = routes.to_vec();
++        ordered.sort_by_key(|r| (r.token, r.ordinal));
++        let compute = (|| {
++            let cpu = xs.to_dtype(DType::F32)?.to_device(&Device::Cpu)?;
++            let mut output = vec![
++                0f32;
++                tokens
++                    .checked_mul(hidden)
++                    .ok_or_else(|| error("output shape overflow"))?
++            ];
++            for route in ordered {
++                let row = cpu.narrow(0, route.token, 1)?;
++                let contribution = if let Some(weights) = state.resident.get(&route.key) {
++                    weights
++                        .compute(&row.to_device(&self.device)?, &activation)?
++                        .to_device(&Device::Cpu)?
++                } else {
++                    host.slice_to(route.key.expert as usize, &Device::Cpu)?
++                        .compute(&row, &activation)?
++                };
++                let values = contribution.to_vec2::<f32>()?;
++                for (dst, &value) in output[route.token * hidden..(route.token + 1) * hidden]
++                    .iter_mut()
++                    .zip(&values[0])
++                {
++                    *dst += value * route.weight;
++                }
++            }
++            Tensor::from_vec(output, (tokens, hidden), xs.device())?.to_dtype(xs.dtype())
++        })();
++        // Errors may occur after enqueue. Never release a pin before owned CUDA work completes.
++        if !partition.gpu.is_empty() {
++            self.device.synchronize()?;
++        }
++        let table = state
++            .table
++            .as_mut()
++            .expect("table retained throughout forward");
++        for (_, lease) in partition.gpu {
++            table.release(lease).map_err(residency_error)?;
++        }
++        compute
++    }
++}
++
++impl Drop for ExpertResidencyRuntime {
++    fn drop(&mut self) {
++        match self.drain_and_release() {
++            Ok(()) => {
++                // Engine-owned allocation release is not a host-observed VRAM reclaim receipt.
++                tracing::debug!(
++                    "native expert residency references released after synchronization"
++                );
++            }
++            Err(error) => {
++                // Drop cannot preserve allocations after a driver failure; do not claim reclaim.
++                tracing::error!(%error, "native expert residency unload unqualified");
++            }
++        }
++    }
++}
++
++pub(crate) struct ExpertResidencyRequest {
++    budget: String,
++    profile: String,
++}
++impl ExpertResidencyRequest {
++    pub(crate) fn from_environment() -> Result<Option<Self>> {
++        let read = |name| match std::env::var(name) {
++            Ok(value) => Ok(Some(value)),
++            Err(std::env::VarError::NotPresent) => Ok(None),
++            Err(e) => Err(error(&format!("invalid {name}: {e}"))),
++        };
++        let budget = read("GNOSTRAL_EXPERT_CACHE_BYTES")?;
++        let profile_path = read("GNOSTRAL_EXPERT_PROFILE")?;
++        let Some(budget) = budget else {
++            if profile_path.is_some() {
++                candle_core::bail!("expert profile requires cache budget");
++            }
++            return Ok(None);
++        };
++        if budget.is_empty() || !budget.bytes().all(|b| b.is_ascii_digit()) {
++            candle_core::bail!("expert cache budget must be decimal bytes");
++        }
++        let bytes = budget.parse::<u64>().map_err(|e| error(&e.to_string()))?;
++        if bytes == 0 {
++            return Ok(None);
++        }
++        let path = profile_path.ok_or_else(|| error("expert cache requires profile path"))?;
++        let profile = std::fs::read_to_string(path)
++            .map_err(|e| error(&format!("cannot read expert profile: {e}")))?;
++        Ok(Some(Self { budget, profile }))
++    }
++    pub(crate) fn validate(
++        self,
++        hash: &str,
++        layers: u32,
++        experts: u32,
++    ) -> Result<ExpertResidencyConfig> {
++        ExpertResidencyConfig::from_values(
++            Some(&self.budget),
++            Some(&self.profile),
++            hash,
++            layers,
++            experts,
++        )?
++        .ok_or_else(|| error("unexpected disabled expert residency request"))
++    }
++}
+diff --git a/mistralrs-core/src/moe/experts/residency_observation.rs b/mistralrs-core/src/moe/experts/residency_observation.rs
+new file mode 100644
+index 000000000..3846621ee
+--- /dev/null
++++ b/mistralrs-core/src/moe/experts/residency_observation.rs
+@@ -0,0 +1,111 @@
++//! Engine-owned observation: never external placement or eviction authority.
++//! GPU: padded bytes of owned CUDA allocations; CPU: logical mapped GGUF bytes.
++use candle_core::{Error, Result};
++use std::time::Duration;
++
++#[derive(Debug, Clone, PartialEq)]
++pub(crate) struct ResidencyObservation {
++    pub gpu_allocated_bytes: Option<u64>,
++    pub cpu_weight_bytes: Option<u64>,
++    pub routing_hits: u64,
++    pub routing_misses: u64,
++    pub upload_attempted_bytes: u64,
++    pub upload_bytes: u64,
++    pub failed_uploads: u64,
++    pub upload_ms: Option<f64>,
++    pub active_leases: usize,
++    pub released: bool,
++}
++
++#[derive(Default)]
++pub(super) struct ResidencyCounters {
++    pub cpu_weight_bytes: u64,
++    pub routing_hits: u64,
++    pub routing_misses: u64,
++    pub upload_attempted_bytes: u64,
++    pub upload_bytes: u64,
++    pub failed_uploads: u64,
++    pub upload_duration: Option<Duration>,
++}
++impl ResidencyCounters {
++    fn add(v: &mut u64, amount: u64) -> Result<()> {
++        *v = v
++            .checked_add(amount)
++            .ok_or_else(|| Error::Msg("expert residency counter overflow".into()))?;
++        Ok(())
++    }
++    pub fn host_bytes(&mut self, bytes: u64) -> Result<()> {
++        Self::add(&mut self.cpu_weight_bytes, bytes)
++    }
++    pub fn begin_upload(&mut self, planned_bytes: u64) -> Result<()> {
++        Self::add(&mut self.upload_attempted_bytes, planned_bytes)
++    }
++    pub fn complete_upload(&mut self, actual_bytes: u64, elapsed: Duration) -> Result<()> {
++        Self::add(&mut self.upload_bytes, actual_bytes)?;
++        self.upload_duration = Some(
++            self.upload_duration
++                .unwrap_or_default()
++                .saturating_add(elapsed),
++        );
++        Ok(())
++    }
++    pub fn failed_upload(&mut self) -> Result<()> {
++        Self::add(&mut self.failed_uploads, 1)
++    }
++    pub fn route(&mut self, gpu: usize, cpu: usize) -> Result<()> {
++        Self::add(&mut self.routing_hits, gpu as u64)?;
++        Self::add(&mut self.routing_misses, cpu as u64)
++    }
++    pub fn snapshot(
++        &self,
++        gpu: Option<u64>,
++        leases: usize,
++        released: bool,
++    ) -> ResidencyObservation {
++        ResidencyObservation {
++            gpu_allocated_bytes: gpu,
++            cpu_weight_bytes: Some(self.cpu_weight_bytes),
++            routing_hits: self.routing_hits,
++            routing_misses: self.routing_misses,
++            upload_attempted_bytes: self.upload_attempted_bytes,
++            upload_bytes: self.upload_bytes,
++            failed_uploads: self.failed_uploads,
++            upload_ms: self.upload_duration.map(|v| v.as_secs_f64() * 1000.0),
++            active_leases: leases,
++            released,
++        }
++    }
++}
++#[cfg(test)]
++mod tests {
++    use super::*;
++    #[test]
++    fn missing_timing_is_unknown_not_zero() {
++        let s = ResidencyCounters::default().snapshot(None, 0, false);
++        assert_eq!(s.upload_ms, None);
++        assert_eq!(s.gpu_allocated_bytes, None);
++    }
++    #[test]
++    fn failed_upload_never_increments_completed_bytes() -> Result<()> {
++        let mut c = ResidencyCounters::default();
++        c.begin_upload(8192)?;
++        c.failed_upload()?;
++        let s = c.snapshot(Some(0), 0, false);
++        assert_eq!(s.upload_attempted_bytes, 8192);
++        assert_eq!(s.upload_bytes, 0);
++        assert_eq!(s.failed_uploads, 1);
++        Ok(())
++    }
++    #[test]
++    fn completed_transfer_and_routes_are_distinct() -> Result<()> {
++        let mut c = ResidencyCounters::default();
++        c.begin_upload(4096)?;
++        c.complete_upload(4096, Duration::from_millis(2))?;
++        c.route(2, 3)?;
++        let s = c.snapshot(Some(4096), 1, false);
++        assert_eq!((s.routing_hits, s.routing_misses), (2, 3));
++        assert_eq!(s.upload_ms, Some(2.0));
++        assert_eq!(s.active_leases, 1);
++        Ok(())
++    }
++}
+diff --git a/mistralrs-core/src/moe/experts/residency_tests.rs b/mistralrs-core/src/moe/experts/residency_tests.rs
+new file mode 100644
+index 000000000..ffe112eda
+--- /dev/null
++++ b/mistralrs-core/src/moe/experts/residency_tests.rs
+@@ -0,0 +1,384 @@
++use super::residency::ExpertResidencyConfig;
++
++const HASH: &str = "db3ce897ccc9e7d9dbf17fe083cae7880a2092aa473b45eba8b77715aa9ca170";
++fn profile() -> String {
++    format!(
++        r#"{{"schema":1,"model_sha256":"{HASH}","layers":2,"experts_per_layer":3,"ranking":[{{"layer":1,"expert":2}},{{"layer":0,"expert":1}}]}}"#
++    )
++}
++#[test]
++fn absent_or_zero_cache_preserves_original_dispatch() {
++    assert!(ExpertResidencyConfig::from_values(None, None, HASH, 2, 3)
++        .unwrap()
++        .is_none());
++    assert!(
++        ExpertResidencyConfig::from_values(Some("0"), None, HASH, 2, 3)
++            .unwrap()
++            .is_none()
++    );
++}
++#[test]
++fn profile_identity_and_geometry_are_validated() {
++    let p = profile();
++    let cfg = ExpertResidencyConfig::from_values(Some("1024"), Some(&p), HASH, 2, 3)
++        .unwrap()
++        .unwrap();
++    assert_eq!(cfg.budget_bytes, 1024);
++    assert_eq!(cfg.profile[0].layer, 1);
++    assert_eq!(cfg.profile[0].expert, 2);
++    assert!(ExpertResidencyConfig::from_values(Some("1024"), Some(&p), "wrong", 2, 3).is_err());
++    assert!(ExpertResidencyConfig::from_values(Some("1024"), Some(&p), HASH, 3, 3).is_err());
++}
++#[test]
++fn malformed_or_incomplete_opt_in_is_an_error() {
++    for budget in ["-1", "1GB", "18446744073709551616", ""] {
++        assert!(
++            ExpertResidencyConfig::from_values(Some(budget), Some(&profile()), HASH, 2, 3).is_err()
++        );
++    }
++    for p in [
++        "{}",
++        "invalid",
++        &profile().replace("\"schema\":1", "\"schema\":2"),
++        &profile().replace("\"expert\":2", "\"expert\":3"),
++        &profile().replace("{\"layer\":0,\"expert\":1}", "{\"layer\":1,\"expert\":2}"),
++    ] {
++        assert!(ExpertResidencyConfig::from_values(Some("1024"), Some(p), HASH, 2, 3).is_err());
++    }
++    assert!(ExpertResidencyConfig::from_values(Some("1024"), None, HASH, 2, 3).is_err());
++    assert!(ExpertResidencyConfig::from_values(None, Some(&profile()), HASH, 2, 3).is_err());
++}
++
++use super::residency::{ExpertProjectionSet, ExpertResidencyRuntime};
++use candle_core::{
++    quantized::{GgmlDType, QTensor},
++    DType, Device, Module, Tensor,
++};
++use gnostral_expert_residency::{ExpertKey, Route};
++use std::sync::Arc;
++fn projections() -> candle_core::Result<ExpertProjectionSet> {
++    let values = (0..3 * 256 * 256)
++        .map(|i| (1.0 + (i % 7) as f32) / 4096.0)
++        .collect::<Vec<_>>();
++    let q = Arc::new(QTensor::quantize(
++        &Tensor::from_vec(values, (3, 256, 256), &Device::Cpu)?,
++        GgmlDType::Q2K,
++    )?);
++    let down = Arc::new(QTensor::quantize(
++        &Tensor::ones((3, 256, 256), DType::F32, &Device::Cpu)?.affine(1.0 / 4096.0, 0.0)?,
++        GgmlDType::Q3K,
++    )?);
++    Ok(ExpertProjectionSet {
++        gate: q.clone(),
++        up: q,
++        down,
++    })
++}
++fn routes() -> Vec<Route> {
++    vec![
++        Route {
++            token: 0,
++            ordinal: 0,
++            key: ExpertKey {
++                layer: 0,
++                expert: 1,
++            },
++            weight: 0.4,
++        },
++        Route {
++            token: 0,
++            ordinal: 1,
++            key: ExpertKey {
++                layer: 0,
++                expert: 1,
++            },
++            weight: 0.6,
++        },
++        Route {
++            token: 1,
++            ordinal: 0,
++            key: ExpertKey {
++                layer: 0,
++                expert: 0,
++            },
++            weight: 1.0,
++        },
++    ]
++}
++#[test]
++fn cpu_routes_preserve_repeated_contributions_and_order() -> candle_core::Result<()> {
++    let runtime = ExpertResidencyRuntime::new(
++        ExpertResidencyConfig {
++            budget_bytes: 0,
++            profile: vec![],
++        },
++        1,
++        3,
++        Device::Cpu,
++    )?;
++    runtime.register(0, projections()?)?;
++    runtime.finish_loading()?;
++    let xs = Tensor::ones((2, 256), DType::F32, &Device::Cpu)?;
++    let mut reversed = routes();
++    reversed.reverse();
++    let a = runtime
++        .forward(0, &xs, &routes(), |x| x.silu())?
++        .to_vec2::<f32>()?;
++    let b = runtime
++        .forward(0, &xs, &reversed, |x| x.silu())?
++        .to_vec2::<f32>()?;
++    assert_eq!(a, b);
++    let host = projections()?;
++    let row = xs.narrow(0, 0, 1)?;
++    let gate =
++        candle_core::quantized::QMatMul::from_qtensor(host.gate.expert_slice_to(1, &Device::Cpu)?)?
++            .forward(&row)?;
++    let up =
++        candle_core::quantized::QMatMul::from_qtensor(host.up.expert_slice_to(1, &Device::Cpu)?)?
++            .forward(&row)?;
++    let expected =
++        candle_core::quantized::QMatMul::from_qtensor(host.down.expert_slice_to(1, &Device::Cpu)?)?
++            .forward(&(gate.silu()? * up)?)?
++            .to_vec2::<f32>()?;
++    for (a, b) in a[0].iter().zip(&expected[0]) {
++        assert!((a - b).abs() <= 1e-6);
++    }
++    assert!(runtime
++        .forward(
++            0,
++            &xs,
++            &[Route {
++                token: 0,
++                ordinal: 0,
++                key: ExpertKey {
++                    layer: 0,
++                    expert: 3
++                },
++                weight: 1.0
++            }],
++            |x| Ok(x.clone())
++        )
++        .is_err());
++    Ok(())
++}
++#[cfg(feature = "cuda")]
++#[test]
++fn model_global_budget_and_mixed_gpu_routes_match_cpu() -> candle_core::Result<()> {
++    let device = Device::new_cuda(0)?;
++    let one_expert = ((256 * 256 / 256 + 512 / 256)
++        * (2 * GgmlDType::Q2K.type_size() + GgmlDType::Q3K.type_size()))
++        as u64;
++    let ranking = vec![
++        ExpertKey {
++            layer: 0,
++            expert: 1,
++        },
++        ExpertKey {
++            layer: 1,
++            expert: 2,
++        },
++    ];
++    let gpu = ExpertResidencyRuntime::new(
++        ExpertResidencyConfig {
++            budget_bytes: one_expert,
++            profile: ranking,
++        },
++        2,
++        3,
++        device.clone(),
++    )?;
++    let cpu = ExpertResidencyRuntime::new(
++        ExpertResidencyConfig {
++            budget_bytes: 0,
++            profile: vec![],
++        },
++        2,
++        3,
++        Device::Cpu,
++    )?;
++    for layer in 0..2 {
++        gpu.register(layer, projections()?)?;
++        cpu.register(layer, projections()?)?;
++    }
++    gpu.finish_loading()?;
++    cpu.finish_loading()?;
++    assert_eq!(gpu.allocated_bytes()?, one_expert);
++    assert!(gpu.is_resident(ExpertKey {
++        layer: 0,
++        expert: 1
++    })?);
++    assert!(!gpu.is_resident(ExpertKey {
++        layer: 1,
++        expert: 2
++    })?);
++    let xs = Tensor::ones((2, 256), DType::F32, &Device::Cpu)?;
++    let reference = cpu
++        .forward(0, &xs, &routes(), |x| x.silu())?
++        .to_vec2::<f32>()?;
++    let candidate = gpu
++        .forward(0, &xs.to_device(&device)?, &routes(), |x| x.silu())?
++        .to_device(&Device::Cpu)?
++        .to_vec2::<f32>()?;
++    for (a, b) in candidate.iter().flatten().zip(reference.iter().flatten()) {
++        assert!(a.is_finite());
++        assert!((a - b).abs() <= 1e-4 + 1e-3 * b.abs());
++    }
++    Ok(())
++}
++
++#[test]
++fn loading_is_transactional_and_rejects_incomplete_layers() -> candle_core::Result<()> {
++    let runtime = ExpertResidencyRuntime::new(
++        ExpertResidencyConfig {
++            budget_bytes: 0,
++            profile: vec![],
++        },
++        2,
++        3,
++        Device::Cpu,
++    )?;
++    runtime.register(0, projections()?)?;
++    assert!(runtime.register(0, projections()?).is_err());
++    assert!(runtime.finish_loading().is_err());
++    assert_eq!(runtime.allocated_bytes()?, 0);
++    runtime.register(1, projections()?)?;
++    runtime.finish_loading()?;
++    assert!(runtime.finish_loading().is_err());
++    assert!(runtime.register(1, projections()?).is_err());
++    Ok(())
++}
++
++#[test]
++fn owned_residency_observation_and_double_drain_cpu() -> candle_core::Result<()> {
++    let runtime = ExpertResidencyRuntime::new(
++        ExpertResidencyConfig {
++            budget_bytes: 0,
++            profile: vec![],
++        },
++        1,
++        3,
++        Device::Cpu,
++    )?;
++    assert_eq!(runtime.snapshot()?.gpu_allocated_bytes, None);
++    runtime.register(0, projections()?)?;
++    runtime.finish_loading()?;
++    let ready = runtime.snapshot()?;
++    assert_eq!(ready.gpu_allocated_bytes, Some(0));
++    assert!(ready.cpu_weight_bytes.unwrap() > 0);
++    assert!(ready.upload_ms.is_none());
++    let xs = Tensor::ones((2, 256), DType::F32, &Device::Cpu)?;
++    runtime.forward(0, &xs, &routes(), |x| x.silu())?;
++    let report = runtime.snapshot()?;
++    assert_eq!(report.routing_hits, 0);
++    assert_eq!(report.routing_misses, routes().len() as u64);
++    assert_eq!(report.active_leases, 0);
++    runtime.drain_and_release()?;
++    runtime.drain_and_release()?; // idempotent
++    let stopped = runtime.snapshot()?;
++    assert!(stopped.released);
++    assert_eq!(stopped.gpu_allocated_bytes, Some(0));
++    assert_eq!(stopped.cpu_weight_bytes, Some(0));
++    assert!(runtime.forward(0, &xs, &routes(), |x| x.silu()).is_err());
++    Ok(())
++}
++
++#[cfg(feature = "cuda")]
++#[test]
++fn observed_gpu_allocations_are_completed_uploads() -> candle_core::Result<()> {
++    let device = Device::new_cuda(0)?;
++    let one = ((256 * 256 / 256 + 512 / 256)
++        * (2 * GgmlDType::Q2K.type_size() + GgmlDType::Q3K.type_size())) as u64;
++    let runtime = ExpertResidencyRuntime::new(
++        ExpertResidencyConfig {
++            budget_bytes: one,
++            profile: vec![ExpertKey {
++                layer: 0,
++                expert: 0,
++            }],
++        },
++        1,
++        3,
++        device.clone(),
++    )?;
++    runtime.register(0, projections()?)?;
++    runtime.finish_loading()?;
++    let observation = runtime.snapshot()?;
++    assert_eq!(observation.gpu_allocated_bytes, Some(one));
++    assert_eq!(observation.upload_bytes, one);
++    assert_eq!(observation.upload_attempted_bytes, one);
++    assert!(observation.upload_ms.unwrap().is_finite());
++    let xs = Tensor::ones((2, 256), DType::F32, &device)?;
++    runtime.forward(0, &xs, &routes(), |x| x.silu())?;
++    let observation = runtime.snapshot()?;
++    assert_eq!(observation.routing_hits, 1);
++    assert_eq!(observation.routing_misses, 2);
++    runtime.drain_and_release()?;
++    assert_eq!(runtime.snapshot()?.gpu_allocated_bytes, Some(0));
++    Ok(())
++}
++
++#[cfg(feature = "cuda")]
++#[test]
++fn mixed_cpu_cuda_layer_admission_never_uploads_cpu_only_experts() -> candle_core::Result<()> {
++    let cuda = Device::new_cuda(0)?;
++    let expert_bytes = ((256 * 256 / 256 + 512 / 256)
++        * (2 * GgmlDType::Q2K.type_size() + GgmlDType::Q3K.type_size()))
++        as u64;
++    let cpu_rank = ExpertKey {
++        layer: 1,
++        expert: 2,
++    };
++    let gpu_rank = ExpertKey {
++        layer: 0,
++        expert: 1,
++    };
++    let runtime = ExpertResidencyRuntime::new(
++        ExpertResidencyConfig {
++            budget_bytes: expert_bytes,
++            profile: vec![cpu_rank, gpu_rank],
++        },
++        2,
++        3,
++        cuda.clone(),
++    )?;
++    runtime.register_on(0, projections()?, &cuda)?;
++    runtime.register_on(1, projections()?, &Device::Cpu)?;
++    runtime.finish_loading()?;
++    assert_eq!(runtime.allocated_bytes()?, expert_bytes);
++    assert!(!runtime.is_resident(cpu_rank)?);
++    assert!(runtime.is_resident(gpu_rank)?);
++    let cpu_input = Tensor::ones((2, 256), DType::F32, &Device::Cpu)?;
++    let routed = routes()
++        .into_iter()
++        .map(|mut r| {
++            r.key.layer = 1;
++            r
++        })
++        .collect::<Vec<_>>();
++    let reference = ExpertResidencyRuntime::new(
++        ExpertResidencyConfig {
++            budget_bytes: 0,
++            profile: vec![],
++        },
++        2,
++        3,
++        Device::Cpu,
++    )?;
++    reference.register(0, projections()?)?;
++    reference.register(1, projections()?)?;
++    reference.finish_loading()?;
++    let expected = reference
++        .forward(1, &cpu_input, &routed, |x| x.silu())?
++        .to_vec2::<f32>()?;
++    let actual = runtime
++        .forward(1, &cpu_input, &routed, |x| x.silu())?
++        .to_vec2::<f32>()?;
++    assert_eq!(actual, expected);
++    let observation = runtime.snapshot()?;
++    assert_eq!(observation.routing_hits, 0);
++    assert_eq!(observation.routing_misses, routed.len() as u64);
++    assert_eq!(observation.gpu_allocated_bytes, Some(expert_bytes));
++    runtime.drain_and_release()?;
++    assert_eq!(runtime.snapshot()?.gpu_allocated_bytes, Some(0));
++    Ok(())
++}
+diff --git a/mistralrs-core/src/moe/mod.rs b/mistralrs-core/src/moe/mod.rs
+index 3ec525d74..d15fc9287 100644
+--- a/mistralrs-core/src/moe/mod.rs
++++ b/mistralrs-core/src/moe/mod.rs
+@@ -12,3 +12,6 @@ pub fn shard(dim: usize, rank: usize, world_size: usize) -> Shard {
+         world_size,
+     }
+ }
++
++#[cfg(feature = "gnostral-expert-residency")]
++pub(crate) use experts::residency::{ExpertResidencyRequest, ExpertResidencyRuntime};
+diff --git a/mistralrs-core/src/pipeline/cuda_graph.rs b/mistralrs-core/src/pipeline/cuda_graph.rs
+index bfde56735..c5c01dd11 100644
+--- a/mistralrs-core/src/pipeline/cuda_graph.rs
++++ b/mistralrs-core/src/pipeline/cuda_graph.rs
+@@ -38,8 +38,9 @@ use crate::pipeline::{
+ };
+ use crate::speculative::SpeculativeGraphState;
+ 
++// cudarc 0.19.10 represents this CUDA constant as a transparent newtype.
+ const CUDA_GRAPH_INSTANTIATE_FLAGS: u64 =
+-    sys::CUgraphInstantiate_flags_enum::CUDA_GRAPH_INSTANTIATE_FLAG_AUTO_FREE_ON_LAUNCH as u64;
++    sys::CUgraphInstantiate_flags::CUDA_GRAPH_INSTANTIATE_FLAG_AUTO_FREE_ON_LAUNCH.0 as u64;
+ // Matches the standard CUDA paged-attention V2 partition size.
+ const PAGED_ATTENTION_PARTITION_SIZE: usize = 512;
+ const TARGET_CUDA_DECODE_GRAPH_CACHE_DEFAULT_CAPACITY: usize = 64;
+diff --git a/mistralrs-core/src/pipeline/normal.rs b/mistralrs-core/src/pipeline/normal.rs
+index 20eca36fd..7dbb76c15 100644
+--- a/mistralrs-core/src/pipeline/normal.rs
++++ b/mistralrs-core/src/pipeline/normal.rs
+@@ -649,6 +649,26 @@ impl Loader for NormalLoader {
+                 self.config.from_uqff.is_none(),
+             )?,
+         };
++        #[cfg(feature = "gnostral-expert-residency")]
++        {
++            let identity: serde_json::Value = serde_json::from_str(&config)?;
++            let is_qwen3_moe = identity
++                .get("architectures")
++                .and_then(serde_json::Value::as_array)
++                .and_then(|a| a.first())
++                .and_then(serde_json::Value::as_str)
++                == Some("Qwen3MoeForCausalLM");
++            if (!is_qwen3_moe
++                || self.prepared_source.is_none()
++                || self.lora_adapters.is_some()
++                || self.xlora_model_id.is_some()
++                || in_situ_quant.is_some()
++                || self.config.from_uqff.is_some())
++                && crate::moe::ExpertResidencyRequest::from_environment()?.is_some()
++            {
++                anyhow::bail!("native expert residency pilot only supports unadapted single-file Qwen3 MoE GGUF without ISQ");
++            }
++        }
+         let config = if self.config.from_uqff.is_some() {
+             super::isq::sanitize_quantized_weight_source_config(&config)?
+         } else {
+diff --git a/mistralrs-paged-attn/build.rs b/mistralrs-paged-attn/build.rs
+index 91bbea968..d0d4a6906 100644
+--- a/mistralrs-paged-attn/build.rs
++++ b/mistralrs-paged-attn/build.rs
+@@ -14,6 +14,24 @@ const FA3_SOURCES: [&str; 4] = [
+     "third_party/flash-attention/hopper/flash_fwd_combine.cu",
+     "third_party/flash-attention/hopper/flash_prepare_scheduler.cu",
+ ];
++
++#[cfg(all(feature = "cuda", target_family = "unix"))]
++const LAB_CUDA_SOURCES: [&str; 14] = [
++    "src/cuda/concat_and_cache_mla_kernel.cu",
++    "src/cuda/copy_blocks_kernel.cu",
++    "src/cuda/flash_attn_sinks.cu",
++    "src/cuda/gather_kv_cache_kernel.cu",
++    "src/cuda/gather_mla_cache_kernel.cu",
++    "src/cuda/pagedattention_v1_bf16.cu",
++    "src/cuda/pagedattention_v1_f16.cu",
++    "src/cuda/pagedattention_v1_f32.cu",
++    "src/cuda/pagedattention_v2_bf16.cu",
++    "src/cuda/pagedattention_v2_f16.cu",
++    "src/cuda/pagedattention_v2_f32.cu",
++    "src/cuda/reshape_and_cache_kernel.cu",
++    "src/cuda/update_kvscales.cu",
++    "src/cuda/lab_flashinfer_stubs.cu",
++];
+ #[cfg(all(feature = "cuda", target_family = "unix"))]
+ const CUDA_BUILD_ROOT_ENV: &str = "MISTRALRS_CUDA_BUILD_ROOT";
+ 
+@@ -100,6 +118,7 @@ fn main() -> Result<()> {
+ 
+     println!("cargo:rerun-if-changed=build.rs");
+     println!("cargo:rerun-if-env-changed=CUDA_NVCC_FLAGS");
++    println!("cargo:rerun-if-env-changed=MISTRALRS_LAB_FAST_CUDA_BUILD");
+     println!("cargo:rerun-if-changed=src/cuda/pagedattention.cuh");
+     println!("cargo:rerun-if-changed=src/cuda/copy_blocks_kernel.cu");
+     println!("cargo:rerun-if-changed=src/cuda/reshape_and_cache_kernel.cu");
+@@ -139,12 +158,19 @@ fn main() -> Result<()> {
+         cuda_header_hash("src/cuda", &["src/cuda/fa3"])?
+     );
+ 
+-    let mut builder = cudaforge::KernelBuilder::new()
+-        .source_glob("src/cuda/*.cu")
++    let lab_fast_cuda_build = std::env::var_os("MISTRALRS_LAB_FAST_CUDA_BUILD").is_some();
++    let nvcc_opt = if lab_fast_cuda_build { "-O0" } else { "-O3" };
++
++    let builder = if lab_fast_cuda_build {
++        cudaforge::KernelBuilder::new().source_files(LAB_CUDA_SOURCES)
++    } else {
++        cudaforge::KernelBuilder::new().source_glob("src/cuda/*.cu")
++    };
++    let mut builder = builder
+         .watch(["src/cuda"])
+         .out_dir(&kernel_build_dir)
+         .arg("-std=c++17")
+-        .arg("-O3")
++        .arg(nvcc_opt)
+         .arg("-U__CUDA_NO_HALF_OPERATORS__")
+         .arg("-U__CUDA_NO_HALF_CONVERSIONS__")
+         .arg("-U__CUDA_NO_HALF2_OPERATORS__")
+diff --git a/mistralrs-paged-attn/src/cuda/lab_flashinfer_stubs.cu b/mistralrs-paged-attn/src/cuda/lab_flashinfer_stubs.cu
+new file mode 100644
+index 000000000..dce0b2146
+--- /dev/null
++++ b/mistralrs-paged-attn/src/cuda/lab_flashinfer_stubs.cu
+@@ -0,0 +1,39 @@
++#include <cuda_runtime.h>
++#include <cstdint>
++#include <cstdio>
++
++static void lab_disabled(const char *name) {
++  std::fprintf(stderr, "%s is disabled in MISTRALRS_LAB_FAST_CUDA_BUILD; run with paged attention off\n", name);
++}
++
++extern "C" void reshape_and_cache_flashinfer(
++    void *, void *, void *, void *, int64_t *, int32_t, int32_t, int32_t,
++    int32_t, int32_t, int32_t, float, float, uint32_t, uint32_t, cudaStream_t) {
++  lab_disabled("reshape_and_cache_flashinfer");
++}
++
++extern "C" int32_t flashinfer_decode(
++    void *, void *, void *, const int32_t *, const int32_t *, const int32_t *,
++    const int32_t *, const int32_t *, const int32_t *, const int32_t *,
++    const bool *, void *, void *, void *, int32_t, int32_t, int32_t, int32_t,
++    int32_t, int32_t, int32_t, int32_t, float, int32_t, float, float, float,
++    uint32_t, uint32_t, cudaStream_t) {
++  lab_disabled("flashinfer_decode");
++  return static_cast<int32_t>(cudaErrorNotSupported);
++}
++
++extern "C" void gather_kv_cache_flashinfer(
++    void *, void *, void *, void *, const int32_t *, const int32_t *, int32_t,
++    int32_t, int32_t, int32_t, int32_t, int32_t, uint32_t, uint32_t, float,
++    float, cudaStream_t) {
++  lab_disabled("gather_kv_cache_flashinfer");
++}
++
++extern "C" int32_t flashinfer_mla_decode(
++    void *, void *, void *, void *, const int32_t *, const int32_t *,
++    const int32_t *, void *, int32_t, int32_t, int32_t, float, int32_t, float,
++    float, float, const int32_t *, const int32_t *, const int32_t *,
++    const int32_t *, uint32_t, cudaStream_t) {
++  lab_disabled("flashinfer_mla_decode");
++  return static_cast<int32_t>(cudaErrorNotSupported);
++}
+diff --git a/mistralrs-quant/build.rs b/mistralrs-quant/build.rs
+index 59e39fa77..6bbb84512 100644
+--- a/mistralrs-quant/build.rs
++++ b/mistralrs-quant/build.rs
+@@ -10,6 +10,7 @@ const CUTLASS_COMMIT_ENV: &str = "MISTRALRS_CUTLASS_COMMIT";
+ const CUDA_BUILD_ROOT_ENV: &str = "MISTRALRS_CUDA_BUILD_ROOT";
+ #[cfg(feature = "cuda")]
+ const SUPPORTED_CUDA_TOOLKIT_VERSIONS: &[(usize, usize)] = &[
++    (13, 4),
+     (13, 3),
+     (13, 2),
+     (13, 1),
+diff --git a/mistralrs-quant/src/gguf/archive.rs b/mistralrs-quant/src/gguf/archive.rs
+index fe6d648cd..526ab92fc 100644
+--- a/mistralrs-quant/src/gguf/archive.rs
++++ b/mistralrs-quant/src/gguf/archive.rs
+@@ -15,7 +15,7 @@ use candle_core::{
+             BlockQ2K, BlockQ3K, BlockQ4K, BlockQ4_0, BlockQ4_1, BlockQ5K, BlockQ5_0, BlockQ5_1,
+             BlockQ6K, BlockQ8K, BlockQ8_0, BlockQ8_1,
+         },
+-        GgmlDType, QStorage, QTensor,
++        BonsaiForwardTransform, BonsaiInverseTransform, GgmlDType, QStorage, QTensor,
+     },
+     Device, Error, Result,
+ };
+@@ -106,6 +106,8 @@ impl GgufDType {
+             39 => "MXFP4",
+             40 => "NVFP4",
+             41 => "Q1_0",
++            142 => "PQ2_0",
++            143 => "PTQ1_0",
+             _ => "UNKNOWN",
+         }
+     }
+@@ -116,6 +118,7 @@ impl GgufDType {
+             2 | 3 | 6..=9 | 20 | 39 => Some(32),
+             40 => Some(64),
+             41 => Some(128),
++            142 | 143 => Some(128),
+             10..=19 | 21..=23 | 29 | 34 | 35 => Some(256),
+             _ => None,
+         }
+@@ -155,6 +158,8 @@ impl GgufDType {
+             39 => Some(17),
+             40 => Some(36),
+             41 => Some(18),
++            142 => Some(34),
++            143 => Some(28),
+             _ => None,
+         }
+     }
+@@ -176,6 +181,8 @@ impl GgufDType {
+             14 => GgmlDType::Q6K,
+             15 => GgmlDType::Q8K,
+             30 => GgmlDType::BF16,
++            142 => GgmlDType::PQ2_0,
++            143 => GgmlDType::PTQ1_0,
+             raw => candle_core::bail!("GGUF dtype {raw} is not supported by Candle"),
+         };
+         Ok(dtype)
+@@ -348,6 +355,9 @@ impl std::fmt::Debug for GgufArchive {
+ }
+ 
+ impl GgufArchive {
++    pub fn single_file_bytes(&self) -> Option<&[u8]> {
++        (self.mappings.len() == 1).then(|| self.mappings[0].as_ref())
++    }
+     pub fn open<I, P>(paths: I) -> Result<Self>
+     where
+         I: IntoIterator<Item = P>,
+@@ -564,13 +574,247 @@ impl GgufArchive {
+         if self.shards[info.shard_index].endian != GgufEndian::Little {
+             candle_core::bail!("big-endian GGUF tensor loading is not supported");
+         }
+-        qtensor_from_gguf_data(
+-            info.dtype.candle_dtype()?,
++        let dtype = info.dtype.candle_dtype()?;
++        let (forward, inverse) = if matches!(dtype, GgmlDType::PQ2_0 | GgmlDType::PTQ1_0) {
++            let width = info.shape.last().copied().unwrap_or(1);
++            let forward = self.bonsai_forward_transform(name, width)?;
++            let inverse = self.bonsai_inverse_transform(name, width)?;
++            if forward.is_none() && inverse.is_none() {
++                candle_core::bail!(
++                    "Bonsai tensor `{name}` is packed as {dtype:?} but is absent from Prism Hadamard forward/inverse manifests"
++                )
++            }
++            (forward, inverse)
++        } else {
++            (None, None)
++        };
++        qtensor_from_gguf_data_with_bonsai(
++            dtype,
+             data.bytes(),
+             info.shape.clone(),
+             device,
++            forward,
++            inverse,
+         )
+     }
++
++    fn bonsai_forward_transform(
++        &self,
++        name: &str,
++        width: usize,
++    ) -> Result<Option<BonsaiForwardTransform>> {
++        let Some(Value::Array(weight_names)) = self.metadata.get("prism.hadamard.weight_names")
++        else {
++            return Ok(None);
++        };
++        let is_forward = weight_names
++            .iter()
++            .any(|value| matches!(value, Value::String(candidate) if candidate == name));
++        if !is_forward {
++            return Ok(None);
++        }
++        let block_size = match self.metadata.get("prism.hadamard.block_size") {
++            Some(Value::U32(v)) => *v as usize,
++            Some(Value::U64(v)) => usize::try_from(*v)
++                .map_err(|_| Error::msg("prism.hadamard.block_size does not fit usize"))?,
++            other => candle_core::bail!("missing/invalid prism.hadamard.block_size: {other:?}"),
++        };
++        if !width.is_multiple_of(block_size) {
++            candle_core::bail!(
++                "Bonsai folded tensor `{name}` width {width} is not divisible by Hadamard block size {block_size}"
++            )
++        }
++        match self.metadata.get("prism.hadamard.transform") {
++            Some(Value::String(v)) if v == "normalized-sylvester-walsh-hadamard" => {}
++            other => candle_core::bail!("unsupported prism.hadamard.transform: {other:?}"),
++        }
++        match self.metadata.get("prism.hadamard.axis") {
++            Some(Value::String(v)) if v == "input-last-dimension" => {}
++            other => candle_core::bail!("unsupported prism.hadamard.axis: {other:?}"),
++        }
++        let signs = match self.metadata.get("prism.hadamard.sign_mode") {
++            Some(Value::String(mode)) if mode == "identity" => None,
++            Some(Value::String(mode)) if mode == "explicit" => {
++                let Some(Value::Array(widths)) = self.metadata.get("prism.hadamard.sign_widths")
++                else {
++                    candle_core::bail!("explicit prism.hadamard mode requires sign_widths")
++                };
++                let Some(Value::Array(values)) = self.metadata.get("prism.hadamard.sign_values")
++                else {
++                    candle_core::bail!("explicit prism.hadamard mode requires sign_values")
++                };
++                let mut offset = 0usize;
++                let mut selected = None;
++                for width_value in widths {
++                    let sign_width = match width_value {
++                        Value::I32(v) if *v > 0 => *v as usize,
++                        Value::U32(v) if *v > 0 => *v as usize,
++                        other => candle_core::bail!("invalid prism.hadamard sign width: {other:?}"),
++                    };
++                    let end = offset
++                        .checked_add(sign_width)
++                        .ok_or_else(|| Error::msg("prism.hadamard sign offset overflow"))?;
++                    if end > values.len() {
++                        candle_core::bail!(
++                            "prism.hadamard.sign_values is shorter than sign_widths declare"
++                        )
++                    }
++                    if sign_width == width {
++                        let mut row_signs = Vec::with_capacity(sign_width);
++                        for value in &values[offset..end] {
++                            let sign = match value {
++                                Value::I32(1) | Value::U32(1) => 1,
++                                Value::I32(-1) => -1,
++                                other => candle_core::bail!(
++                                    "invalid prism.hadamard sign value: {other:?}"
++                                ),
++                            };
++                            row_signs.push(sign);
++                        }
++                        selected = Some(row_signs);
++                    }
++                    offset = end;
++                }
++                if offset != values.len() {
++                    candle_core::bail!("prism.hadamard.sign_values length mismatch")
++                }
++                Some(selected.ok_or_else(|| {
++                    Error::msg(format!(
++                        "no prism.hadamard sign vector for width {width} ({name})"
++                    ))
++                })?)
++            }
++            other => candle_core::bail!("unsupported prism.hadamard.sign_mode: {other:?}"),
++        };
++        let grouped_gdn = matches!(
++            self.metadata.get("prism.hadamard.gdn_v_grouped"),
++            Some(Value::Bool(true))
++        ) && name.contains(".ssm_out.");
++        let gdn_permutation = if grouped_gdn {
++            let arch = match self.metadata.get("general.architecture") {
++                Some(Value::String(arch)) => arch.as_str(),
++                other => candle_core::bail!(
++                    "missing/invalid general.architecture for Bonsai GDN transform: {other:?}"
++                ),
++            };
++            let read_usize = |key: &str| -> Result<usize> {
++                match self.metadata.get(key) {
++                    Some(Value::U32(v)) => Ok(*v as usize),
++                    Some(Value::U64(v)) => usize::try_from(*v)
++                        .map_err(|_| Error::msg(format!("{key} does not fit usize"))),
++                    Some(Value::I32(v)) if *v > 0 => Ok(*v as usize),
++                    other => candle_core::bail!("missing/invalid {key}: {other:?}"),
++                }
++            };
++            let n_v = read_usize(&format!("{arch}.ssm.time_step_rank"))?;
++            let n_k = read_usize(&format!("{arch}.ssm.group_count"))?;
++            if n_k == 0 || n_v == 0 || !n_v.is_multiple_of(n_k) || !width.is_multiple_of(n_v) {
++                candle_core::bail!(
++                    "invalid Bonsai GDN geometry for `{name}`: width={width}, n_v={n_v}, n_k={n_k}"
++                )
++            }
++            Some((width / n_v, n_k, n_v / n_k))
++        } else {
++            None
++        };
++        Ok(Some(BonsaiForwardTransform::new(
++            block_size,
++            signs,
++            gdn_permutation,
++        )?))
++    }
++
++    fn bonsai_inverse_transform(
++        &self,
++        name: &str,
++        width: usize,
++    ) -> Result<Option<BonsaiInverseTransform>> {
++        let Some(Value::Array(inverse_names)) =
++            self.metadata.get("prism.hadamard.inverse_weight_names")
++        else {
++            return Ok(None);
++        };
++        let is_inverse = inverse_names
++            .iter()
++            .any(|value| matches!(value, Value::String(candidate) if candidate == name));
++        if !is_inverse {
++            return Ok(None);
++        }
++        let block_size = match self.metadata.get("prism.hadamard.block_size") {
++            Some(Value::U32(v)) => *v as usize,
++            Some(Value::U64(v)) => usize::try_from(*v)
++                .map_err(|_| Error::msg("prism.hadamard.block_size does not fit usize"))?,
++            other => candle_core::bail!("missing/invalid prism.hadamard.block_size: {other:?}"),
++        };
++        if !width.is_multiple_of(block_size) {
++            candle_core::bail!(
++                "Bonsai inverse tensor `{name}` width {width} is not divisible by Hadamard block size {block_size}"
++            )
++        }
++        match self.metadata.get("prism.hadamard.transform") {
++            Some(Value::String(v)) if v == "normalized-sylvester-walsh-hadamard" => {}
++            other => candle_core::bail!("unsupported prism.hadamard.transform: {other:?}"),
++        }
++        match self.metadata.get("prism.hadamard.axis") {
++            Some(Value::String(v)) if v == "input-last-dimension" => {}
++            other => candle_core::bail!("unsupported prism.hadamard.axis: {other:?}"),
++        }
++        let signs = match self.metadata.get("prism.hadamard.sign_mode") {
++            Some(Value::String(mode)) if mode == "identity" => None,
++            Some(Value::String(mode)) if mode == "explicit" => {
++                let Some(Value::Array(widths)) = self.metadata.get("prism.hadamard.sign_widths")
++                else {
++                    candle_core::bail!("explicit prism.hadamard mode requires sign_widths")
++                };
++                let Some(Value::Array(values)) = self.metadata.get("prism.hadamard.sign_values")
++                else {
++                    candle_core::bail!("explicit prism.hadamard mode requires sign_values")
++                };
++                let mut offset = 0usize;
++                let mut selected = None;
++                for width_value in widths {
++                    let sign_width = match width_value {
++                        Value::I32(v) if *v > 0 => *v as usize,
++                        Value::U32(v) if *v > 0 => *v as usize,
++                        other => candle_core::bail!("invalid prism.hadamard sign width: {other:?}"),
++                    };
++                    let end = offset
++                        .checked_add(sign_width)
++                        .ok_or_else(|| Error::msg("prism.hadamard sign offset overflow"))?;
++                    if end > values.len() {
++                        candle_core::bail!(
++                            "prism.hadamard.sign_values is shorter than sign_widths declare"
++                        )
++                    }
++                    if sign_width == width {
++                        let mut row_signs = Vec::with_capacity(sign_width);
++                        for value in &values[offset..end] {
++                            let sign = match value {
++                                Value::I32(1) | Value::U32(1) => 1,
++                                Value::I32(-1) => -1,
++                                other => candle_core::bail!(
++                                    "invalid prism.hadamard sign value: {other:?}"
++                                ),
++                            };
++                            row_signs.push(sign);
++                        }
++                        selected = Some(row_signs);
++                    }
++                    offset = end;
++                }
++                if offset != values.len() {
++                    candle_core::bail!("prism.hadamard.sign_values length mismatch")
++                }
++                Some(selected.ok_or_else(|| {
++                    Error::msg(format!(
++                        "no prism.hadamard sign vector for width {width} ({name})"
++                    ))
++                })?)
++            }
++            other => candle_core::bail!("unsupported prism.hadamard.sign_mode: {other:?}"),
++        };
++        Ok(Some(BonsaiInverseTransform::new(block_size, signs)?))
++    }
+ }
+ 
+ pub(super) fn qtensor_from_gguf_data(
+@@ -578,6 +822,17 @@ pub(super) fn qtensor_from_gguf_data(
+     data: &[u8],
+     dims: Vec<usize>,
+     device: &Device,
++) -> Result<QTensor> {
++    qtensor_from_gguf_data_with_bonsai(dtype, data, dims, device, None, None)
++}
++
++fn qtensor_from_gguf_data_with_bonsai(
++    dtype: GgmlDType,
++    data: &[u8],
++    dims: Vec<usize>,
++    device: &Device,
++    forward: Option<BonsaiForwardTransform>,
++    inverse: Option<BonsaiInverseTransform>,
+ ) -> Result<QTensor> {
+     let elem_count = dims.iter().try_fold(1usize, |count, dim| {
+         count
+@@ -599,7 +854,10 @@ pub(super) fn qtensor_from_gguf_data(
+             data.len()
+         );
+     }
+-    let storage = if data.as_ptr().align_offset(ggml_dtype_alignment(dtype)) == 0 {
++    let is_bonsai = matches!(dtype, GgmlDType::PQ2_0 | GgmlDType::PTQ1_0);
++    let storage = if is_bonsai {
++        QStorage::from_bonsai_data(Cow::Borrowed(data), device, dtype, forward, inverse)?
++    } else if data.as_ptr().align_offset(ggml_dtype_alignment(dtype)) == 0 {
+         QStorage::from_data(Cow::Borrowed(data), device, dtype)?
+     } else {
+         let mut aligned = vec![0u128; data.len().div_ceil(size_of::<u128>())];
+@@ -627,6 +885,7 @@ const fn ggml_dtype_alignment(dtype: GgmlDType) -> usize {
+         GgmlDType::Q6K => align_of::<BlockQ6K>(),
+         GgmlDType::Q8K => align_of::<BlockQ8K>(),
+         GgmlDType::BF16 => align_of::<bf16>(),
++        GgmlDType::PQ2_0 | GgmlDType::PTQ1_0 => 1,
+     }
+ }
+ 
+diff --git a/mistralrs-quant/src/gguf/mod.rs b/mistralrs-quant/src/gguf/mod.rs
+index 873bb41e0..b28df99f7 100644
+--- a/mistralrs-quant/src/gguf/mod.rs
++++ b/mistralrs-quant/src/gguf/mod.rs
+@@ -68,6 +68,8 @@ fn ggml_dtype_to_uqff_code(dtype: GgmlDType) -> u32 {
+         GgmlDType::Q6K => 14,
+         GgmlDType::Q8K => 15,
+         GgmlDType::BF16 => 30,
++        GgmlDType::PQ2_0 => 142,
++        GgmlDType::PTQ1_0 => 143,
+     }
+ }
+ 
+@@ -88,6 +90,8 @@ fn ggml_dtype_from_uqff_code(dtype: u32) -> Result<GgmlDType> {
+         14 => Ok(GgmlDType::Q6K),
+         15 => Ok(GgmlDType::Q8K),
+         30 => Ok(GgmlDType::BF16),
++        142 => Ok(GgmlDType::PQ2_0),
++        143 => Ok(GgmlDType::PTQ1_0),
+         _ => candle_core::bail!("unknown dtype for quantized weight tensor {dtype}"),
+     }
+ }
+@@ -109,6 +113,8 @@ fn gguf_dtype_label(dtype: u32) -> String {
+         14 => "q6k",
+         15 => "q8k",
+         30 => "bf16",
++        142 => "pq2_0",
++        143 => "ptq1_0",
+         _ => "unknown",
+     }
+     .to_string()
+diff --git a/mistralrs-quant/src/gguf/packed_affine.rs b/mistralrs-quant/src/gguf/packed_affine.rs
+index 7ddfd7b9e..9fa659e5a 100644
+--- a/mistralrs-quant/src/gguf/packed_affine.rs
++++ b/mistralrs-quant/src/gguf/packed_affine.rs
+@@ -50,7 +50,11 @@ impl AffineFormatSpec {
+             GgmlDType::Q4K => (4, 32),
+             GgmlDType::Q5K | GgmlDType::Q8K => (8, 32),
+             GgmlDType::Q6K => (8, 16),
+-            GgmlDType::F32 | GgmlDType::F16 | GgmlDType::BF16 => return None,
++            GgmlDType::F32
++            | GgmlDType::F16
++            | GgmlDType::BF16
++            | GgmlDType::PQ2_0
++            | GgmlDType::PTQ1_0 => return None,
+         };
+         Some(Self {
+             source_dtype,
+diff --git a/mistralrs-quant/src/gguf/weight_source.rs b/mistralrs-quant/src/gguf/weight_source.rs
+index f12a5b68c..bb9fd7634 100644
+--- a/mistralrs-quant/src/gguf/weight_source.rs
++++ b/mistralrs-quant/src/gguf/weight_source.rs
+@@ -762,6 +762,9 @@ impl GgufWeightSource {
+ }
+ 
+ impl QuantizedWeightSource for GgufWeightSource {
++    fn single_file_gguf_bytes(&self) -> Option<&[u8]> {
++        self.archive.single_file_bytes()
++    }
+     fn contains(&self, name: &str) -> bool {
+         self.bindings.contains_key(name)
+     }
+diff --git a/mistralrs-quant/src/lib.rs b/mistralrs-quant/src/lib.rs
+index 755e2390a..d983b8a3f 100644
+--- a/mistralrs-quant/src/lib.rs
++++ b/mistralrs-quant/src/lib.rs
+@@ -65,6 +65,10 @@ pub use uqff::{
+ };
+ 
+ pub trait QuantizedWeightSource: Send + Sync {
++    /// Exact bytes of a single-file GGUF source, for opt-in model identity validation.
++    fn single_file_gguf_bytes(&self) -> Option<&[u8]> {
++        None
++    }
+     fn contains(&self, name: &str) -> bool;
+ 
+     fn load_linear(
+@@ -84,6 +88,9 @@ pub trait QuantizedWeightSource: Send + Sync {
+ }
+ 
+ impl<T: QuantizedWeightSource + ?Sized> QuantizedWeightSource for Arc<T> {
++    fn single_file_gguf_bytes(&self) -> Option<&[u8]> {
++        (**self).single_file_gguf_bytes()
++    }
+     fn contains(&self, name: &str) -> bool {
+         (**self).contains(name)
+     }
+@@ -1299,6 +1306,11 @@ impl TryFrom<GgmlDType> for IsqType {
+             GgmlDType::BF16 | GgmlDType::F32 | GgmlDType::F16 => {
+                 candle_core::bail!("Expected valid GGML ISQ type.")
+             }
++            GgmlDType::PQ2_0 | GgmlDType::PTQ1_0 => {
++                candle_core::bail!(
++                    "Bonsai packed dtypes are load-only GGUF formats and cannot be selected as ISQ types."
++                )
++            }
+         }
+     }
+ }

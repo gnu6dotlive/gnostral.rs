@@ -29,3 +29,8 @@ secrets/
 
 __pycache__/
 *.pyc
+
+# Local third-party snapshots and original source archives stay out of Git.
+/vendor/
+/evidence/logs/*.tar.gz
+/.target/

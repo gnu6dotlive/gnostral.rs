@@ -1,0 +1,187 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://gnostral.rs/schemas/vendor-inventory.schema.json",
+  "title": "gnostral.rs vendor/reference inventory",
+  "description": "Shape of an evidence/runs/*-vendor-*.json or *-reference-*.json record. Modelled on evidence/runs/strata-vendor-20261008.json and extended for donors that cannot supply a commit id (ARCHIVE_ONLY). A validator is not shipped; this file is the contract a reviewer reads. Required fields are the ones a reviewer must be able to check offline.",
+  "type": "object",
+  "additionalProperties": true,
+  "required": [
+    "schema",
+    "time_utc",
+    "repository",
+    "revision",
+    "revision_state",
+    "license",
+    "state",
+    "snapshot_scope",
+    "local_modifications",
+    "patches",
+    "reason",
+    "files",
+    "verification",
+    "support_status"
+  ],
+  "properties": {
+    "schema": { "const": 1 },
+    "time_utc": {
+      "type": "string",
+      "description": "ISO-8601 UTC timestamp of the inventory run. Never back-dated or edited."
+    },
+    "repository": {
+      "type": "string",
+      "format": "uri",
+      "description": "Canonical upstream repository as declared by the donor."
+    },
+    "repository_declared": {
+      "type": "array",
+      "description": "Every declared spelling of the repository URL with its source, when the donor is inconsistent.",
+      "items": {
+        "type": "object",
+        "required": ["value", "source", "status"],
+        "properties": {
+          "value": { "type": "string" },
+          "source": { "type": "string" },
+          "status": { "enum": ["DECLARED", "OBSERVED", "RUN", "UNVERIFIED"] }
+        }
+      }
+    },
+    "revision": {
+      "type": "string",
+      "description": "Full 40-hex upstream commit, or the literal UNRESOLVED. Never a short hash, tag, branch name or date."
+    },
+    "revision_state": {
+      "enum": ["COMMIT", "TAG", "ARCHIVE_ONLY", "UNRESOLVED"],
+      "description": "ARCHIVE_ONLY means the bytes are pinned by digest because no VCS metadata exists."
+    },
+    "revision_evidence": {
+      "type": "object",
+      "description": "Required when revision is not a commit. Must let an offline reviewer re-verify identity.",
+      "properties": {
+        "archive_sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+        "tree_digest_sha256": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$",
+          "description": "sha256 over sorted records of '<path>\\0<sha256>\\0<bytes>\\n'."
+        },
+        "retained_tree_digest_sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+        "method": { "type": "string" },
+        "resolution_steps": { "type": "array", "items": { "type": "string" } }
+      }
+    },
+    "license": {
+      "type": "string",
+      "description": "SPDX identifier of the donor license."
+    },
+    "license_file": {
+      "type": "object",
+      "required": ["path", "bytes", "sha256"],
+      "properties": {
+        "path": { "type": "string" },
+        "bytes": { "type": "integer", "minimum": 1 },
+        "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+        "note": { "type": "string" }
+      }
+    },
+    "state": {
+      "enum": ["PINNED_UPSTREAM", "PATCHED_UPSTREAM", "REFERENCE_ONLY"],
+      "description": "Must equal the state in manifests/upstreams.toml for the same project."
+    },
+    "snapshot_scope": { "type": "string" },
+    "excluded": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["path", "reason", "bytes"],
+        "properties": {
+          "path": { "type": "string" },
+          "reason": { "type": "string" },
+          "bytes": { "type": "integer" },
+          "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" }
+        }
+      }
+    },
+    "submodules": {
+      "type": "array",
+      "description": "Every upstream submodule, whether or not its contents are present. Absent content is a provenance hole that must be stated.",
+      "items": {
+        "type": "object",
+        "required": ["path", "url", "present_in_archive", "revision"],
+        "properties": {
+          "path": { "type": "string" },
+          "url": { "type": "string" },
+          "present_in_archive": { "type": "boolean" },
+          "revision": { "type": "string" }
+        }
+      }
+    },
+    "local_modifications": { "type": "boolean" },
+    "patches": { "type": "array", "items": { "type": "string" } },
+    "source_path": {
+      "type": ["string", "null"],
+      "description": "Vendored directory, or null for REFERENCE_ONLY (no tree vendored)."
+    },
+    "reason": { "type": "string" },
+    "archive": {
+      "type": "object",
+      "required": ["sha256"],
+      "properties": {
+        "path": { "type": "string" },
+        "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+        "bytes": { "type": "integer" },
+        "publication": { "type": "string" }
+      }
+    },
+    "files": {
+      "type": "array",
+      "description": "Every retained file, sorted by path.",
+      "items": {
+        "type": "object",
+        "required": ["path", "bytes", "sha256"],
+        "properties": {
+          "path": { "type": "string" },
+          "bytes": { "type": "integer", "minimum": 0 },
+          "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" }
+        }
+      }
+    },
+    "file_count": { "type": "integer", "minimum": 0 },
+    "excluded_count": { "type": "integer", "minimum": 0 },
+    "total_bytes": { "type": "integer", "minimum": 0 },
+    "build": {
+      "type": "object",
+      "description": "Whether any build/import was attempted, and the concrete blockers if it cannot be built. False + reasons is the correct record for an unbuildable donor.",
+      "properties": {
+        "attempted": { "type": "boolean" },
+        "buildable_on_target": { "type": "boolean" },
+        "blockers": { "type": "array", "items": { "type": "string" } }
+      }
+    },
+    "inference_run": {
+      "type": "boolean",
+      "description": "True only if donor inference actually executed locally under retained evidence."
+    },
+    "support_status": {
+      "enum": ["NOT_LOCALLY_QUALIFIED", "LOCALLY_QUALIFIED", "NOT_APPLICABLE"],
+      "description": "A donor is normally NOT_LOCALLY_QUALIFIED forever: it is source material, not a local runtime."
+    },
+    "verification": {
+      "type": "object",
+      "required": ["file_hashes_recorded", "file_hashes_verified", "mismatches"],
+      "properties": {
+        "file_hashes_recorded": { "type": "integer" },
+        "file_hashes_verified": { "type": "integer" },
+        "mismatches": { "type": "array", "items": { "type": "string" } },
+        "tree_digest_recomputed": { "type": "boolean" },
+        "manifest_parse": { "enum": ["PASS", "FAIL", "NOT_RUN"] },
+        "vendor_and_archive_ignored": { "type": "boolean" },
+        "build_run": { "type": "boolean" },
+        "log": { "type": ["string", "null"] },
+        "method": { "type": "string" }
+      }
+    },
+    "proposal": {
+      "type": "string",
+      "description": "Path to the donor analysis document."
+    }
+  }
+}

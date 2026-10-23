@@ -19,3 +19,11 @@ Preserve upstream license and copyright files verbatim.
 ## Default
 
 Prefer REFERENCE_ONLY plus patches and manifests. Vendor a full source tree only when byte-identical reproducibility materially benefits the experiment.
+
+## Forked upstreams (PATCHED_UPSTREAM)
+
+A lab fork is recorded as `PATCHED_UPSTREAM` with three extra facts so a reviewer can
+reconstruct it without the local tree: the public `base_revision` the fork starts from,
+the `local_commits` on top, and a patch file exporting the full base→working-tree delta.
+The inventory hashes the applied tree and records the patch digest. An uncommitted
+working tree is exported as a patch, never left as the only copy of the change.
