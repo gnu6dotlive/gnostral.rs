@@ -774,3 +774,113 @@ impl fmt::Display for LaneIdentity {
         )
     }
 }
+
+fn num(v: f64) -> Json {
+    Json::Num(v)
+}
+
+fn num_or_null(v: Option<f64>) -> Json {
+    v.map_or(Json::Null, Json::Num)
+}
+
+fn obj(entries: Vec<(&str, Json)>) -> Json {
+    Json::Obj(
+        entries
+            .into_iter()
+            .map(|(k, v)| (k.to_string(), v))
+            .collect(),
+    )
+}
+
+/// Encode a receipt in the closed schema's field order; `decode(&encode(r)) == r`.
+pub fn encode(receipt: &Receipt) -> Json {
+    let p = &receipt.protocol;
+    let l = &receipt.lane;
+    obj(vec![
+        ("schema", Json::Str(receipt.schema.clone())),
+        ("run_id", Json::Str(receipt.run_id.clone())),
+        ("date", Json::Str(receipt.date.clone())),
+        (
+            "protocol",
+            obj(vec![
+                ("id", Json::Str(p.id.clone())),
+                ("sha256", Json::Str(p.sha256.clone())),
+                ("repetitions", num(p.repetitions as f64)),
+                ("context_tokens", num(p.context_tokens as f64)),
+                ("prompt_sha256", Json::Str(p.prompt_sha256.clone())),
+                ("threads", num(p.threads as f64)),
+                (
+                    "sampling",
+                    obj(vec![
+                        ("temperature", num(p.sampling.temperature)),
+                        ("seed", num(p.sampling.seed as f64)),
+                        ("n_predict", num(p.sampling.n_predict as f64)),
+                        ("repeat_penalty", num(p.sampling.repeat_penalty)),
+                    ]),
+                ),
+            ]),
+        ),
+        (
+            "lane",
+            obj(vec![
+                ("engine", Json::Str(l.engine.clone())),
+                ("binary_path", Json::Str(l.binary_path.clone())),
+                ("binary_sha256", Json::Str(l.binary_sha256.clone())),
+                ("model_path", Json::Str(l.model_path.clone())),
+                ("model_sha256", Json::Str(l.model_sha256.clone())),
+                ("host_fingerprint", Json::Str(l.host_fingerprint.clone())),
+                ("driver_status", Json::Str(l.driver_status.as_str().into())),
+            ]),
+        ),
+        ("warmup_runs", num(receipt.warmup_runs as f64)),
+        (
+            "samples",
+            Json::Arr(
+                receipt
+                    .samples
+                    .iter()
+                    .map(|s| {
+                        obj(vec![
+                            ("decode_tok_s", num(s.decode_tok_s)),
+                            ("prefill_tok_s", num_or_null(s.prefill_tok_s)),
+                            ("ttft_ms", num_or_null(s.ttft_ms)),
+                            ("tpot_ms", num_or_null(s.tpot_ms)),
+                            ("vram_used_mib", num_or_null(s.vram_used_mib)),
+                            ("host_rss_peak_mib", num_or_null(s.host_rss_peak_mib)),
+                            ("exit_status", Json::Str(s.exit_status.as_str().into())),
+                        ])
+                    })
+                    .collect(),
+            ),
+        ),
+        ("ambient_vram_mib", num_or_null(receipt.ambient_vram_mib)),
+        ("reclaim_delta_mib", num_or_null(receipt.reclaim_delta_mib)),
+        (
+            "semantic_parity",
+            Json::Str(receipt.semantic_parity.as_str().into()),
+        ),
+        (
+            "derived",
+            obj(vec![
+                ("sample_count", num(receipt.derived.sample_count as f64)),
+                (
+                    "median_decode_tok_s",
+                    num(receipt.derived.median_decode_tok_s),
+                ),
+                ("min_decode_tok_s", num(receipt.derived.min_decode_tok_s)),
+                ("max_decode_tok_s", num(receipt.derived.max_decode_tok_s)),
+                ("p95_decode_tok_s", num(receipt.derived.p95_decode_tok_s)),
+            ]),
+        ),
+        (
+            "unknowns",
+            Json::Obj(
+                receipt
+                    .unknowns
+                    .iter()
+                    .map(|(k, v)| (k.clone(), Json::Str(v.clone())))
+                    .collect(),
+            ),
+        ),
+    ])
+}

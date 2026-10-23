@@ -326,6 +326,67 @@ impl Parser<'_> {
     }
 }
 
+/// Serialise a value. Numbers use Rust's shortest round-trip formatting, so
+/// `parse(&write(v)) == v` for every finite value this crate produces.
+pub fn write(value: &Json) -> String {
+    let mut out = String::new();
+    write_into(&mut out, value);
+    out
+}
+
+fn write_into(out: &mut String, value: &Json) {
+    match value {
+        Json::Null => out.push_str("null"),
+        Json::Bool(b) => out.push_str(if *b { "true" } else { "false" }),
+        Json::Num(n) => {
+            if n.fract() == 0.0 && n.abs() < 9_007_199_254_740_992.0 {
+                out.push_str(&format!("{}", *n as i64));
+            } else {
+                out.push_str(&format!("{n}"));
+            }
+        }
+        Json::Str(s) => write_str(out, s),
+        Json::Arr(items) => {
+            out.push('[');
+            for (i, item) in items.iter().enumerate() {
+                if i > 0 {
+                    out.push(',');
+                }
+                write_into(out, item);
+            }
+            out.push(']');
+        }
+        Json::Obj(entries) => {
+            out.push('{');
+            for (i, (key, item)) in entries.iter().enumerate() {
+                if i > 0 {
+                    out.push(',');
+                }
+                write_str(out, key);
+                out.push(':');
+                write_into(out, item);
+            }
+            out.push('}');
+        }
+    }
+}
+
+fn write_str(out: &mut String, s: &str) {
+    out.push('"');
+    for c in s.chars() {
+        match c {
+            '"' => out.push_str("\\\""),
+            '\\' => out.push_str("\\\\"),
+            '\n' => out.push_str("\\n"),
+            '\r' => out.push_str("\\r"),
+            '\t' => out.push_str("\\t"),
+            c if (c as u32) < 0x20 => out.push_str(&format!("\\u{:04x}", c as u32)),
+            c => out.push(c),
+        }
+    }
+    out.push('"');
+}
+
 #[cfg(test)]
 mod tests {
     use super::{parse, Json};

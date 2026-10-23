@@ -1,20 +1,22 @@
 //! `gnostral-bench` — Q-031 `ENGINE-PERF-01` receipt gate.
 //!
-//! This binary validates synthetic or real receipts and compares pinned lanes.
-//! It never runs an engine, never touches a GPU and never fills in a missing
-//! measurement.
+//! This binary validates synthetic or real receipts, compares pinned lanes and,
+//! with `run`, drives a frozen-protocol plan. It never touches a GPU itself and
+//! never fills in a missing measurement.
 
 use std::fs;
 
 use gnostral_bench::compare;
 use gnostral_bench::json;
 use gnostral_bench::receipt::{self, is_sha256_hex, Receipt};
+use gnostral_bench::run;
 use gnostral_bench::sha256;
 
 const USAGE: &str = "\
 usage:
   gnostral-bench validate <receipt.json> [--protocol-hash <sha256> | --protocol-file <path>]
   gnostral-bench compare <a.json> <b.json> [<c.json> ...] [--protocol-hash <sha256> | --protocol-file <path>]
+  gnostral-bench run <plan.json> --out <dir> [--dry-run]
   gnostral-bench --help
 
 exit codes: 0 valid / compared, 1 invalid receipt or refused comparison, 2 usage or I/O error";
@@ -27,6 +29,7 @@ fn run(args: Vec<String>) -> i32 {
     match args.first().map(String::as_str) {
         Some("validate") => cmd_validate(&args[1..]),
         Some("compare") => cmd_compare(&args[1..]),
+        Some("run") => cmd_run(&args[1..]),
         Some("-h" | "--help" | "help") => {
             println!("{USAGE}");
             0
@@ -234,5 +237,109 @@ fn cmd_compare(args: &[String]) -> i32 {
             print_issues("REFUSED: lanes are not comparable", &reasons);
             1
         }
+    }
+}
+
+fn cmd_run(args: &[String]) -> i32 {
+    let mut plan_path = None;
+    let mut out_dir = None;
+    let mut dry_run = false;
+    let mut index = 0;
+    while index < args.len() {
+        match args[index].as_str() {
+            "--out" => {
+                let Some(dir) = args.get(index + 1) else {
+                    eprintln!("gnostral-bench: --out requires a directory");
+                    return 2;
+                };
+                out_dir = Some(dir.clone());
+                index += 1;
+            }
+            "--dry-run" => dry_run = true,
+            "-h" | "--help" => {
+                println!("{USAGE}");
+                return 0;
+            }
+            other if other.starts_with('-') => {
+                eprintln!("gnostral-bench: unknown option {other:?}");
+                return 2;
+            }
+            other => {
+                if plan_path.replace(other.to_string()).is_some() {
+                    eprintln!("gnostral-bench: run takes exactly one plan");
+                    return 2;
+                }
+            }
+        }
+        index += 1;
+    }
+    let (Some(plan_path), Some(out_dir)) = (plan_path, out_dir) else {
+        eprintln!("{USAGE}");
+        return 2;
+    };
+    let plan = match fs::read_to_string(&plan_path)
+        .map_err(|e| format!("cannot read plan: {e}"))
+        .and_then(|t| json::parse(&t).map_err(|e| e.to_string()))
+        .and_then(|v| run::decode_plan(&v))
+    {
+        Ok(plan) => plan,
+        Err(message) => {
+            eprintln!("gnostral-bench: {message}");
+            return 1;
+        }
+    };
+    let mut exec = run::ProcessExecutor;
+    if dry_run {
+        let mut runnable = Vec::new();
+        for lane in &plan.lanes {
+            let pin = run::pin_lane(lane, &mut exec);
+            println!("{}: {pin:?}", lane.engine);
+            if pin == run::Pin::Pinned {
+                runnable.push(lane.engine.clone());
+            }
+        }
+        for (lane, phase, i) in run::frozen_order(&plan, &runnable) {
+            println!("{phase:?} {i} {lane}");
+        }
+        return 0;
+    }
+    let bundle = run::execute(&plan, &mut exec);
+    let write = |name: &str, text: &str| {
+        let path = std::path::Path::new(&out_dir).join(name);
+        if let Some(parent) = path.parent() {
+            fs::create_dir_all(parent).map_err(|e| format!("{}: {e}", parent.display()))?;
+        }
+        fs::write(&path, text).map_err(|e| format!("{}: {e}", path.display()))
+    };
+    let mut result = write("bundle.json", &json::write(&run::bundle_json(&bundle)));
+    for (engine, built) in &bundle.receipts {
+        if let Ok(r) = built {
+            result = result.and(write(
+                &format!("receipts/{engine}.json"),
+                &json::write(&receipt::encode(r)),
+            ));
+        }
+    }
+    let report = match &bundle.comparison {
+        Ok(table) => table.clone(),
+        Err(reasons) => format!(
+            "comparison refused:\n{}\n",
+            reasons
+                .iter()
+                .map(|r| format!("- {r}"))
+                .collect::<Vec<_>>()
+                .join("\n")
+        ),
+    };
+    result = result.and(write("pareto.md", &report));
+    if let Err(e) = result {
+        eprintln!("gnostral-bench: {e}");
+        return 2;
+    }
+    print!("{report}");
+    if bundle.comparison.is_ok() {
+        0
+    } else {
+        1
     }
 }
