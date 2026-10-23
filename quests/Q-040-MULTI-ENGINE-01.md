@@ -1,7 +1,7 @@
 # Q-040 — MULTI-ENGINE-01
 
 Review date: 2026-10-23
-State: **PROPOSED** — no measurement exists; no supervisor implementation exists.
+State: **PROPOSED** — supervisor landed and tested against stub engines (`gnostral-supervisor`); no real engine has been run through it; no measurement exists.
 Authorization: supervisor work in `crates/gnostral-supervisor/`, the provider v1 contract in
 `harness/engine-provider-contract/src/v1.rs`, and per-engine qualification profiles. This quest does
 not authorize merging engines, granting one engine another's materialization authority, or claiming

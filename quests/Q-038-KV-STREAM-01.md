@@ -1,7 +1,7 @@
 # Q-038 — KV-STREAM-01
 
 Review date: 2026-10-23
-State: **PROPOSED** — no measurement exists; no code exists; depends on Q-028.
+State: **PROPOSED** — tiering, streaming-plan arithmetic and ticketed block moves landed offline (`gnostral-memory-plan::stream`); no streaming path in the engine; no measurement exists.
 Authorization: one GPU session per iteration after Q-028 lands; KV layout and streaming work in the
 paged-attention path and the pinned-host staging area. This quest does not authorize a KV format
 change that alters tokens, a compression scheme chosen for scoring, or a context-tier claim before

@@ -1,7 +1,7 @@
 # Q-041 — DESKTOP-RESERVE-01
 
 Review date: 2026-10-23
-State: **PROPOSED** — no measurement exists; depends on the memory manager from Q-027.
+State: **PROPOSED** — reserve state machine and envelope arithmetic landed offline (`gnostral-memory-plan::reserve`); no observer or pressure test exists.
 Authorization: elastic reserve and pressure-observer work after Q-027/Q-028, with the desktop session
 protected. This quest does not authorize taking VRAM from the desktop by force, a driver setting
 change, or a "desktop survives" claim based on a single unlucky run.

@@ -1,7 +1,7 @@
 # Q-037 — PREFETCH-EXPERT-01
 
 Review date: 2026-10-23
-State: **PROPOSED** — stretch goal; no measurement exists; no code exists.
+State: **PROPOSED** — stretch goal; no measurement exists; no code exists. Deliberately not started: its precondition gate requires a Q-042 profile showing upload stalls first.
 Authorization: only after a profile shows upload stalls dominate batch decode, and only for the
 router-logit-based next-step prefetch policy. This quest does not authorize speculative execution of
 an expert whose weights are absent, a new upload architecture, or an early start before Q-026/Q-029

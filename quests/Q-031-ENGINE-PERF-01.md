@@ -1,7 +1,7 @@
 # Q-031 — ENGINE-PERF-01
 
 Review date: 2026-10-23
-State: **PROPOSED** — no orchestrator exists, no run has been made.
+State: **PROPOSED** — lane driver (`gnostral-bench run`), receipt encoder, validator and Pareto renderer landed; no real lane has been run.
 Authorization: a new harness under `harness/bench/`, schemas under `schemas/`, synthetic receipts for
 testing, and one real multi-lane run on the lab host. This quest does not authorize a benchmark
 protocol change, a lane shortcut, or a result published without its samples.

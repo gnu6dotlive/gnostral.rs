@@ -1,7 +1,7 @@
 # Q-027 — RESIDENCY-DYNAMIC-01
 
 Review date: 2026-10-23
-State: **PROPOSED** — no measurement exists; dynamic admission is not implemented.
+State: **PROPOSED** — dynamic admission/eviction policy and budget arithmetic landed offline (`gnostral-expert-residency::dynamic`, `gnostral-memory-plan`); no engine hook; no measurement exists.
 Authorization: policy work in `crates/gnostral-expert-residency/`, a future
 `crates/gnostral-memory-plan/`, and residency integration in
 `mistralrs-core/src/moe/experts/residency.rs`. This quest does not authorize KV or expert placement

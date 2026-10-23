@@ -1,7 +1,7 @@
 # Q-026 — MOE-EXECUTOR-02
 
 Review date: 2026-10-23
-State: **PROPOSED** — policy half landed, executor half not started; no performance measurement exists.
+State: **PROPOSED** — policy half landed (incl. ordered scatter, bit-equal to the per-route loop); engine integration not landed; no performance measurement exists.
 Authorization: CPU-only work in `crates/gnostral-moe-exec/`, and only after its gates pass, one
 sequenced patch series inside the pinned `mistralrs-strata` fork. This quest does not authorize a
 new engine dependency, a new CUDA kernel family, a change to the Q-007/Q-008 authority boundary, or
@@ -42,10 +42,12 @@ per route, and the residency `forward()` is still a serial loop with one synchro
 
 ## Current state of this quest
 
-- **Landed:** policy half in `crates/gnostral-moe-exec/` (commit `29bc497`, branch
-  `feat/engine-program`) — deterministic grouping, conservation, placement isolation, reference
-  executor; 11 unit tests pass offline.
-- **Not started:** executor/integration half — no engine patch, no grouped GPU dispatch, no profile.
+- **Landed:** policy half in `crates/gnostral-moe-exec/` — deterministic grouping, conservation,
+  placement isolation, reference executor, plus `gather_group` / `scatter_ordered` (weighted scatter in
+  `(token, ordinal)` order, bit-equal to the per-route loop for any permutation and group cap); 13
+  tests pass offline. The CPU group kernel it is meant to call is `grouped_expert_ffn` in
+  `crates/gnostral-cpu-kernels/` (Q-029).
+- **Not landed:** the engine patch series. No engine code has been compiled or run with it.
 - No measurement of any kind exists.
 
 ## Non-claims

@@ -1,7 +1,7 @@
 # Q-039 — SLO-SCHED-01
 
 Review date: 2026-10-23
-State: **PROPOSED** — no measurement exists; no scheduler policy exists.
+State: **PROPOSED** — admission/fairness policy and deterministic simulation landed offline (`gnostral-scheduler`); not wired; no measurement exists.
 Authorization: scheduler policy work in `mistralrs-core/src/paged_attention/scheduler.rs` and the
 admission path, with client-side tail measurement on the lab host. This quest does not authorize
 granting the supervisor scheduling authority over engine internals, a default-on adaptive policy, or

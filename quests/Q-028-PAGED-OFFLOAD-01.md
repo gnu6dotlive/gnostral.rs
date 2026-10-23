@@ -1,7 +1,7 @@
 # Q-028 — PAGED-OFFLOAD-01
 
 Review date: 2026-10-23
-State: **PROPOSED** — no measurement exists; no code exists.
+State: **PROPOSED** — paged KV block pool (`gnostral-memory-plan::kv`) and continuous-batching policy (`gnostral-scheduler`) landed offline; not wired into the engine; no measurement exists.
 Authorization: one GPU session on the lab host per iteration, patch series in
 `mistralrs-core/src/paged_attention/` and the device-map logic in `pipeline/normal.rs`. This quest
 does not authorize a CPU PagedAttention implementation, a scheduler rewrite, or enabling batching by

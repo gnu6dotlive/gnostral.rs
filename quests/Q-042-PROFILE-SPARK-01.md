@@ -1,7 +1,7 @@
 # Q-042 — PROFILE-SPARK-01
 
 Review date: 2026-10-23
-State: **PROPOSED** — no measurement exists; no timers exist.
+State: **PROPOSED** — timer, reconciliation and receipt crate landed (`gnostral-trace`); not wired into the engine; no profile exists.
 Authorization: instrumentation behind an environment flag in the engine and harness, plus a
 single-request trace export. This quest does not authorize always-on tracing, a profiler dependency
 that changes the runtime, or a performance conclusion drawn without its own receipt.

@@ -1,7 +1,7 @@
 # Q-029 — CPU-KERNEL-Q8-01
 
 Review date: 2026-10-23
-State: **PROPOSED** — no measurement exists; no kernel exists.
+State: **PROPOSED** — Q2_K/Q3_K x Q8_K kernels landed offline (scalar/AVX2/AVX-512 bit-identical, thread-invariant, grouped expert FFN); no engine integration; no benchmark has been run.
 Authorization: CPU-only kernel work in the vendored Candle quant path and `mistralrs-quant/`-adjacent
 code, with microbenchmarks on this machine. This quest does not authorize a new CUDA kernel family, a
 quantization change for benchmarking, or a change to block formats on disk.

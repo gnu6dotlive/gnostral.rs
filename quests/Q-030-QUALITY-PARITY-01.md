@@ -1,7 +1,7 @@
 # Q-030 — QUALITY-PARITY-01
 
 Review date: 2026-10-23
-State: **PROPOSED** — no harness exists, no reference tokens captured, no measurement exists.
+State: **PROPOSED** — oracle, frozen 32-prompt set, frozen thresholds, divergence ledger and gate receipt landed; no reference tokens captured; no measurement exists.
 Authorization: a new harness under `harness/bench/` with schemas under `schemas/` and receipts under
 `evidence/runs/`; one GPU session to capture reference tokens. This quest does not authorize changing
 sampling, routing, quantization or the tokenizer to make a gate pass.

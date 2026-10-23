@@ -91,7 +91,7 @@ Parallel research may be executed in independent worktrees; **no research intake
 
 A separate, gated program for the engine itself: **run a 30B-class MoE model on an 8 GiB consumer GPU at quality parity, faster than anything that fits that card, with reusable measurements.** Program of record: [ENGINE_PROGRAM.md](ENGINE_PROGRAM.md) — thesis, scorecard, five invariants, workstreams W1–W6, milestone ladder M0–M6, decision gates D1–D4, and the evidence policy ("no number without a receipt").
 
-Lanes A and B above are unchanged by it. The engine program does not replace **Q-013D → Q-014 → Q-015 → Q-016**, does not merge engines, and does not touch **BURN-REMOTE-01**. At present **no engine speed claim exists**: only offline, CPU-only pieces of Q-026, Q-029, Q-030 and Q-031 are implemented, with no receipt.
+Lanes A and B above are unchanged by it. The engine program does not replace **Q-013D → Q-014 → Q-015 → Q-016**, does not merge engines, and does not touch **BURN-REMOTE-01**. At present **no engine speed claim exists**: offline, CPU-only pieces of Q-026 to Q-031 and Q-038 to Q-042 are implemented and tested, none is integrated into the engine and none has a receipt.
 
 | Workstream | Quests (all **PROPOSED**) |
 | --- | --- |
