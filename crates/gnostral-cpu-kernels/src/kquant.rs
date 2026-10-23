@@ -17,9 +17,15 @@
 //!   scalar reference keeps eight partial `f32` lanes instead; the two agree
 //!   within [`crate::kquant_dot_error_bound`], not bit for bit.
 //!
+//! [`Numerics::CandleCompat`] instead replays the float combination of the
+//! Candle kernel this host actually dispatches to: the AVX2+FMA kernel (eight
+//! `i32` lanes by `(e % 32) / 4`, one `fma` per lane and block,
+//! `hsum_float_8`) when the CPU has AVX2 and FMA, `vec_dot_unopt` otherwise. It
+//! is bit-equal to Candle for both types; tests transcribe Candle's intrinsics.
+//!
 //! The SIMD paths only compute the integer part. Because integer arithmetic is
 //! exact and the float combination is shared, **scalar, AVX2 and AVX-512 return
-//! bit-identical results**; tests assert equality, not a tolerance.
+//! bit-identical results** under either numerics; tests assert equality, not a tolerance.
 //!
 //! `Q8_K` quantisation follows the vendored Candle rule (`round` half away from
 //! zero, `iscale = -127 / max` where `max` is the signed value of largest
@@ -280,37 +286,134 @@ impl Isa {
     }
 }
 
+/// How the exact per-block integer sums are combined into the `f32` result.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum Numerics {
+    /// One `i32` per block, one float combination per block (see the module docs).
+    #[default]
+    Native,
+    /// The float combination the vendored Candle `vec_dot` runs on this host: its AVX2+FMA kernel
+    /// (eight lanes, `fma` per block, `hsum_float_8`) when the CPU has both, its `vec_dot_unopt`
+    /// otherwise. The result is bit-equal to Candle; the integer part may use any [`Isa`].
+    CandleCompat,
+}
+
+/// An [`Isa`] for the integer part plus the [`Numerics`] of the float part.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct DotKernel {
+    pub isa: Isa,
+    pub numerics: Numerics,
+}
+
+impl From<Isa> for DotKernel {
+    fn from(isa: Isa) -> Self {
+        Self {
+            isa,
+            numerics: Numerics::Native,
+        }
+    }
+}
+
+/// True when the vendored Candle dispatches K-quant dots to its AVX2+FMA kernels.
+pub fn candle_uses_avx2_fma() -> bool {
+    #[cfg(target_arch = "x86_64")]
+    {
+        std::arch::is_x86_feature_detected!("avx2") && std::arch::is_x86_feature_detected!("fma")
+    }
+    #[cfg(not(target_arch = "x86_64"))]
+    {
+        false
+    }
+}
+
+/// Candle `hsum_float_8`: `((a4 + a0) + (a6 + a2)) + ((a5 + a1) + (a7 + a3))`.
+fn hsum_float_8(a: [f32; 8]) -> f32 {
+    ((a[4] + a[0]) + (a[6] + a[2])) + ((a[5] + a[1]) + (a[7] + a[3]))
+}
+
 /// A K-quant weight block that can be dotted against `Q8_K` activations.
 pub trait KQuantBlock: Copy + Send + Sync + 'static {
     const NAME: &'static str;
-    /// Dot product of one weight row (`w.len()` blocks) with one activation row.
+    /// Dot product of one weight row (`w.len()` blocks) with one activation row, [`Numerics::Native`].
     ///
     /// # Panics
     ///
     /// Panics if `isa` is not available; use [`Isa::available`] or [`Isa::detect`].
-    fn dot(isa: Isa, w: &[Self], a: &[BlockQ8K]) -> f32;
+    fn dot(isa: Isa, w: &[Self], a: &[BlockQ8K]) -> f32 {
+        Self::dot_with(isa.into(), w, a)
+    }
+    /// [`KQuantBlock::dot`] with explicit [`Numerics`].
+    ///
+    /// # Panics
+    ///
+    /// Panics if `kernel.isa` is not available.
+    fn dot_with(kernel: DotKernel, w: &[Self], a: &[BlockQ8K]) -> f32;
     fn dequantize(xs: &[Self], ys: &mut [f32]) -> Result<(), KernelError>;
+}
+
+/// Eight `i32` lanes in Candle's AVX2 order: lane `j` sums the values `e` with `(e % 32) / 4 == j`.
+type Lanes = [i32; 8];
+
+fn lane_sum(l: &Lanes) -> i32 {
+    l.iter().sum()
+}
+
+fn q2k_lanes(isa: Isa, x: &BlockQ2K, y: &BlockQ8K) -> Lanes {
+    match isa {
+        Isa::Scalar => q2k_lanes_scalar(x, y),
+        #[cfg(target_arch = "x86_64")]
+        // SAFETY: callers assert availability.
+        Isa::Avx2 => unsafe { crate::kquant_simd::q2k_lanes_avx2(x, y) },
+        #[cfg(target_arch = "x86_64")]
+        // SAFETY: callers assert availability.
+        Isa::Avx512 => unsafe { crate::kquant_simd::q2k_lanes_avx512(x, y) },
+        #[cfg(not(target_arch = "x86_64"))]
+        _ => unreachable!(),
+    }
+}
+
+fn q3k_lanes(isa: Isa, x: &BlockQ3K, y: &BlockQ8K, scales: &[i8; SUBS]) -> Lanes {
+    match isa {
+        Isa::Scalar => q3k_lanes_scalar(x, y, scales),
+        #[cfg(target_arch = "x86_64")]
+        // SAFETY: callers assert availability.
+        Isa::Avx2 => unsafe { crate::kquant_simd::q3k_lanes_avx2(x, y, scales) },
+        #[cfg(target_arch = "x86_64")]
+        // SAFETY: callers assert availability.
+        Isa::Avx512 => unsafe { crate::kquant_simd::q3k_lanes_avx512(x, y, scales) },
+        #[cfg(not(target_arch = "x86_64"))]
+        _ => unreachable!(),
+    }
 }
 
 impl KQuantBlock for BlockQ2K {
     const NAME: &'static str = "q2_k";
 
-    fn dot(isa: Isa, w: &[Self], a: &[BlockQ8K]) -> f32 {
+    fn dot_with(kernel: DotKernel, w: &[Self], a: &[BlockQ8K]) -> f32 {
         assert_eq!(w.len(), a.len(), "q2_k dot length mismatch");
+        let isa = kernel.isa;
         assert!(isa.available(), "{} unavailable", isa.name());
+        if kernel.numerics == Numerics::CandleCompat && candle_uses_avx2_fma() {
+            let mut acc = [0f32; 8];
+            for (x, y) in w.iter().zip(a) {
+                let lanes = q2k_lanes(isa, x, y);
+                let d = y.d * f16_to_f32(x.d);
+                let dmin = -y.d * f16_to_f32(x.dmin);
+                for (j, slot) in acc.iter_mut().enumerate() {
+                    let prod = i32::from(x.scales[2 * j] >> 4) * i32::from(y.bsums[2 * j])
+                        + i32::from(x.scales[2 * j + 1] >> 4) * i32::from(y.bsums[2 * j + 1]);
+                    *slot = dmin.mul_add(prod as f32, *slot);
+                }
+                for (slot, &l) in acc.iter_mut().zip(&lanes) {
+                    *slot = d.mul_add(l as f32, *slot);
+                }
+            }
+            return hsum_float_8(acc);
+        }
+        // Native and Candle's `vec_dot_unopt` share this expression and order.
         let mut sumf = 0f32;
         for (x, y) in w.iter().zip(a) {
-            let isum = match isa {
-                Isa::Scalar => q2k_isum_scalar(x, y),
-                #[cfg(target_arch = "x86_64")]
-                // SAFETY: availability asserted above.
-                Isa::Avx2 => unsafe { crate::kquant_simd::q2k_isum_avx2(x, y) },
-                #[cfg(target_arch = "x86_64")]
-                // SAFETY: availability asserted above.
-                Isa::Avx512 => unsafe { crate::kquant_simd::q2k_isum_avx512(x, y) },
-                #[cfg(not(target_arch = "x86_64"))]
-                _ => unreachable!(),
-            };
+            let isum = lane_sum(&q2k_lanes(isa, x, y));
             let summs = q2k_summs(x, y);
             let dall = y.d * f16_to_f32(x.d);
             let dmin = y.d * f16_to_f32(x.dmin);
@@ -327,32 +430,32 @@ impl KQuantBlock for BlockQ2K {
 impl KQuantBlock for BlockQ3K {
     const NAME: &'static str = "q3_k";
 
-    fn dot(isa: Isa, w: &[Self], a: &[BlockQ8K]) -> f32 {
+    fn dot_with(kernel: DotKernel, w: &[Self], a: &[BlockQ8K]) -> f32 {
         assert_eq!(w.len(), a.len(), "q3_k dot length mismatch");
+        let isa = kernel.isa;
         assert!(isa.available(), "{} unavailable", isa.name());
-        let mut sumf = 0f32;
-        for (x, y) in w.iter().zip(a) {
-            let scales = x.unpacked_scales();
-            let unsigned = match isa {
-                Isa::Scalar => q3k_isum_scalar(x, y, &scales),
-                #[cfg(target_arch = "x86_64")]
-                // SAFETY: availability asserted above.
-                Isa::Avx2 => unsafe { crate::kquant_simd::q3k_isum_avx2(x, y, &scales) },
-                #[cfg(target_arch = "x86_64")]
-                // SAFETY: availability asserted above.
-                Isa::Avx512 => unsafe { crate::kquant_simd::q3k_isum_avx512(x, y, &scales) },
-                #[cfg(not(target_arch = "x86_64"))]
-                _ => unreachable!(),
-            };
-            let offset: i32 = scales
-                .iter()
-                .zip(&y.bsums)
-                .map(|(&s, &b)| i32::from(s) * i32::from(b))
-                .sum();
-            let isum = unsigned - 4 * offset;
-            sumf += (f16_to_f32(x.d) * y.d) * isum as f32;
+        match kernel.numerics {
+            Numerics::Native => {
+                let mut sumf = 0f32;
+                for (x, y) in w.iter().zip(a) {
+                    let isum = lane_sum(&q3k_lanes(isa, x, y, &x.unpacked_scales()));
+                    sumf += (f16_to_f32(x.d) * y.d) * isum as f32;
+                }
+                sumf
+            }
+            Numerics::CandleCompat if candle_uses_avx2_fma() => {
+                let mut acc = [0f32; 8];
+                for (x, y) in w.iter().zip(a) {
+                    let lanes = q3k_lanes(isa, x, y, &x.unpacked_scales());
+                    let d = y.d * f16_to_f32(x.d);
+                    for (slot, &l) in acc.iter_mut().zip(&lanes) {
+                        *slot = d.mul_add(l as f32, *slot);
+                    }
+                }
+                hsum_float_8(acc)
+            }
+            Numerics::CandleCompat => q3k_dot_candle_unopt(w, a),
         }
-        sumf
     }
 
     fn dequantize(xs: &[Self], ys: &mut [f32]) -> Result<(), KernelError> {
@@ -360,17 +463,34 @@ impl KQuantBlock for BlockQ3K {
     }
 }
 
-/// `sum_j (scale_j & 0xF) * sum_{e in j} u_e * q8_e`.
-pub(crate) fn q2k_isum_scalar(x: &BlockQ2K, y: &BlockQ8K) -> i32 {
-    let mut isum = 0i32;
-    for j in 0..SUBS {
-        let mut sub = 0i32;
-        for e in j * SUB..(j + 1) * SUB {
-            sub += i32::from(x.u(e)) * i32::from(y.qs[e]);
+/// Candle `BlockQ3K::vec_dot_unopt`: eight `f32` lanes indexed by `e % 8`, no `fma`.
+///
+/// [`Numerics::CandleCompat`] uses it on hosts without AVX2+FMA; public so that path is testable anywhere.
+pub fn q3k_dot_candle_unopt(w: &[BlockQ3K], a: &[BlockQ8K]) -> f32 {
+    let mut sums = [0f32; 8];
+    for (x, y) in w.iter().zip(a) {
+        let scales = x.unpacked_scales();
+        let mut aux32 = [0i32; 8];
+        for e in 0..QK_K {
+            let v = i32::from(x.u(e)) - 4;
+            aux32[e % 8] += i32::from(scales[e / SUB]) * (v * i32::from(y.qs[e]));
         }
-        isum += i32::from(x.scales[j] & 0xF) * sub;
+        let d = f16_to_f32(x.d) * y.d;
+        for (s, &l) in sums.iter_mut().zip(&aux32) {
+            *s += d * l as f32;
+        }
     }
-    isum
+    sums.iter().sum()
+}
+
+/// `lanes[(e % 32) / 4] += (scale & 0xF) * u_e * q8_e`.
+pub(crate) fn q2k_lanes_scalar(x: &BlockQ2K, y: &BlockQ8K) -> Lanes {
+    let mut lanes = [0i32; 8];
+    for e in 0..QK_K {
+        lanes[(e % 32) / 4] +=
+            i32::from(x.scales[e / SUB] & 0xF) * i32::from(x.u(e)) * i32::from(y.qs[e]);
+    }
+    lanes
 }
 
 fn q2k_summs(x: &BlockQ2K, y: &BlockQ8K) -> i32 {
@@ -381,17 +501,14 @@ fn q2k_summs(x: &BlockQ2K, y: &BlockQ8K) -> i32 {
         .sum()
 }
 
-/// `sum_j scale_j * sum_{e in j} u_e * q8_e` with unbiased scales and unsigned `u` in `0..8`.
-pub(crate) fn q3k_isum_scalar(x: &BlockQ3K, y: &BlockQ8K, scales: &[i8; SUBS]) -> i32 {
-    let mut isum = 0i32;
-    for (j, &scale) in scales.iter().enumerate() {
-        let mut sub = 0i32;
-        for e in j * SUB..(j + 1) * SUB {
-            sub += i32::from(x.u(e)) * i32::from(y.qs[e]);
-        }
-        isum += i32::from(scale) * sub;
+/// `lanes[(e % 32) / 4] += scale * (u_e - 4) * q8_e` with unbiased scales and unsigned `u` in `0..8`.
+pub(crate) fn q3k_lanes_scalar(x: &BlockQ3K, y: &BlockQ8K, scales: &[i8; SUBS]) -> Lanes {
+    let mut lanes = [0i32; 8];
+    for e in 0..QK_K {
+        let v = i32::from(x.u(e)) - 4;
+        lanes[(e % 32) / 4] += i32::from(scales[e / SUB]) * v * i32::from(y.qs[e]);
     }
-    isum
+    lanes
 }
 
 /// Reinterpret a little-endian GGUF byte slice as K-quant blocks without copying.

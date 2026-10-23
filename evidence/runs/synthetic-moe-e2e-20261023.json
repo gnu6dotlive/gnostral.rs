@@ -12,10 +12,13 @@
     "max_tokens": 32,
     "engine_patches": {
       "0001-mistralrs-strata-grouped-executor-q026-q029.patch": "3b950fb646845dfc9ec927c7cb6ccb440dd86c0f9fdb663844e3a15b52d88642",
-      "0002-mistralrs-strata-trace-cpu-optin-capture-q042-q030-q031.patch": "988cc52c819308a6448f243ebdd9a8fdf40976114261d6a5f24db0c0cb7220d4"
+      "0002-mistralrs-strata-trace-cpu-optin-capture-q042-q030-q031.patch": "988cc52c819308a6448f243ebdd9a8fdf40976114261d6a5f24db0c0cb7220d4",
+      "0003-mistralrs-strata-expert-demand-profile-q027.patch": "43db8ef670836532e9f5fb8de0a1ab9ea3f339adeeca646bce83bc77e97a0532",
+      "0004-mistralrs-strata-gnostral-kernel-candle-compat-q029.patch": "c9d96463a4e0a7bfd51ad800d8fc31e327f0baf8e37bed3c8e15a3a50fdc773f"
     },
     "engine_base": "mistral.rs 24dbf5c + patches/strata-residency/20261023-mistralrs-strata-integration.patch, candle via patches/engine-program/candle-strata-public-reconstruction.BUILD-ONLY.patch",
-    "capture_binary_sha256": "105e56806f1bf218ca5e9b756166d237da84d09b5d09fe966582e557ecb4b222"
+    "capture_binary_sha256": "78a9c95b333ca87f2c174307cc8faa37adbd9ddf3052870184b47249909ef726",
+    "host_cpu": "x86_64 with AVX2, FMA and AVX-512BW (Candle dispatches k-quant dots to its AVX2+FMA kernels)"
   },
   "greedy_parity_vs_per_route": {
     "grouped": {
@@ -25,17 +28,8 @@
     },
     "gnostral": {
       "prompts": 32,
-      "identical": 30,
-      "diverged": [
-        {
-          "prompt_id": "q12-de-translate",
-          "divergence_index": 18
-        },
-        {
-          "prompt_id": "q19-summary-tech",
-          "divergence_index": 15
-        }
-      ]
+      "identical": 32,
+      "diverged": []
     },
     "baseline_upstream_cpu_path": {
       "prompts": 32,
@@ -127,10 +121,25 @@
       "prompts": 32,
       "identical": 32,
       "diverged": []
+    },
+    "gnostral_before_candle_compat": {
+      "prompts": 32,
+      "identical": 30,
+      "diverged": [
+        {
+          "prompt_id": "q12-de-translate",
+          "divergence_index": 18
+        },
+        {
+          "prompt_id": "q19-summary-tech",
+          "divergence_index": 15
+        }
+      ],
+      "note": "Earlier run with Numerics::Native (one i32 per block); superseded by patch 0004."
     }
   },
   "explanations": {
-    "gnostral": "Hypothesis, not measured per position: the gnostral Q3_K dot keeps one i32 per block where candle keeps 8 f32 lanes, and candle's AVX2 path orders float sums differently; on a random model with close logits that can flip late argmaxes. The lane stays opt-in and would need ledger entries under the Q-030 gate.",
+    "gnostral": "Since patch 0004 the gnostral lane uses Numerics::CandleCompat: exact integer lanes in Candle's AVX2 order (any ISA) combined with Candle's per-lane fma and hsum_float_8 (or vec_dot_unopt without AVX2+FMA). Unit tests transcribe Candle's intrinsics and assert bit equality per dot, per grouped FFN and per engine forward; this run shows 32/32 token identity end to end. The two late divergences of the earlier Native run are therefore attributed to float combination order.",
     "baseline_upstream_cpu_path": "Established by code inspection, not by a numerical test: on x86 CPU the upstream MoE path (mistralrs-quant gguf/cpu.rs qtensor_indexed_moe_forward) falls back to dequantising the whole Q2_K/Q3_K expert stack to F32 on every call and keeps F32 activations, while the residency path quantises activations to Q8_K as ggml does. Different numerics; no defect is claimed for either path."
   },
   "lane_driver": {
@@ -222,7 +231,7 @@
         "phase": "warmup",
         "index": 0,
         "exit": "OK",
-        "parity": "FAIL"
+        "parity": "PASS"
       },
       {
         "lane": "per-route",
@@ -243,7 +252,7 @@
         "phase": "measured",
         "index": 0,
         "exit": "OK",
-        "parity": "FAIL"
+        "parity": "PASS"
       },
       {
         "lane": "per-route",
@@ -264,7 +273,7 @@
         "phase": "measured",
         "index": 1,
         "exit": "OK",
-        "parity": "FAIL"
+        "parity": "PASS"
       },
       {
         "lane": "per-route",
@@ -285,13 +294,12 @@
         "phase": "measured",
         "index": 2,
         "exit": "OK",
-        "parity": "FAIL"
+        "parity": "PASS"
       }
     ],
     "comparison": [
       "per-route: driver status is UNKNOWN, expected NO_XID",
       "grouped: driver status is UNKNOWN, expected NO_XID",
-      "gnostral: semantic parity is FAIL, and a lane that did not pass the frozen probe cannot be ranked",
       "gnostral: driver status is UNKNOWN, expected NO_XID"
     ]
   },

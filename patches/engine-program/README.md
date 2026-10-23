@@ -16,9 +16,10 @@ to the inventory). `git apply --check` against that tree passes.
 | `0001-mistralrs-strata-grouped-executor-q026-q029.patch` | `3b950fb6...d88642` | Grouped executor in `residency.rs`, `forward_with` from `backends.rs`, optional deps on `gnostral-moe-exec` and `gnostral-cpu-kernels` under the existing `gnostral-expert-residency` feature, parity tests |
 | `0002-mistralrs-strata-trace-cpu-optin-capture-q042-q030-q031.patch` | `988cc52c...7220d4` | On top of `0001`: Q-042 timers (`gnostral-trace` feature, `GNOSTRAL_TRACE=1`, reset after the warmup dummy run), the all-CPU residency opt-in `GNOSTRAL_EXPERT_RESIDENCY_CPU=1`, and the `gnostral_capture` example (Q-030 captures + `GNOSTRAL_METRICS` for Q-031) |
 | `0003-mistralrs-strata-expert-demand-profile-q027.patch` | `43db8ef6...7a0532` | On top of `0002`: `GNOSTRAL_EXPERT_PROFILE_OUT=path` records routed demand per expert and writes a profile in the exact schema `GNOSTRAL_EXPERT_PROFILE` loads (ranked by observed routes) plus `path.demand.json` with the counts; written atomically every 256 layer forwards and on drain |
+| `0004-mistralrs-strata-gnostral-kernel-candle-compat-q029.patch` | `c9d96463...dc773f` | On top of `0003`: the `gnostral` lane calls `grouped_expert_ffn` with `Numerics::CandleCompat`, so it is bit-equal to the `candle` lane; the residency test asserts bit equality |
 | `candle-strata-public-reconstruction.BUILD-ONLY.patch` | `f9549036...98e7b` | **Not for the lab.** Lets the public candle `35d7ae7` stand in for the unpublished lab candle-strata (`f0f334aa`): reconstructed `expert_slice_to`, the Q-010 `cpu_expert_matmul_k`, `cuda_allocation_bytes`, and load-refusing Bonsai PQ2_0/PTQ1_0 stubs |
 
-The lab tree already carries the real candle-strata; apply `0001`, `0002`, `0003` in order there, not the BUILD-ONLY patch.
+The lab tree already carries the real candle-strata; apply `0001` to `0004` in order there, not the BUILD-ONLY patch.
 
 ## Runtime selection (same binary, A/B by environment)
 
@@ -36,32 +37,36 @@ The lab tree already carries the real candle-strata; apply `0001`, `0002`, `0003
   `(token, ordinal)` order. Each expert is sliced once per group instead of once per route.
 - `candle` keeps the vendored k_quants kernel, so the CPU result is **bit-equal** to `per-route`.
 - `gnostral` runs `grouped_expert_ffn` (Q2_K/Q3_K x Q8_K, persistent pool) directly on the borrowed
-  GGUF bytes; it requires a SiLU expert activation and agrees with candle within tolerance, not bit
-  for bit.
+  GGUF bytes; it requires a SiLU expert activation. With `Numerics::CandleCompat` the integer part
+  uses the widest ISA (AVX-512BW, AVX2, scalar) and the float part replays the Candle kernel this
+  host dispatches to (AVX2+FMA lanes, else `vec_dot_unopt`), so it is **bit-equal** to `candle`.
+  This holds against the vendored public candle `35d7ae7`; if the lab candle-strata changed its
+  `Q2_K`/`Q3_K` `vec_dot`, the Q-030 gate catches it.
 - `per-row` keeps m=1 CUDA kernels (same numerics as `per-route`, no per-route sync); `batched`
   switches to the m>1 kernel family and must pass Q-030 before use.
 
 ## Verified here (CPU only, no CUDA build)
 
 ```sh
-cargo test -p mistralrs-core --features gnostral-expert-residency,gnostral-trace --lib moe   # 52 passed, 1 ignored
+cargo test -p mistralrs-core --features gnostral-expert-residency,gnostral-trace --lib moe   # 53 passed, 1 ignored
 ```
 
 - `grouped_cpu_executor_is_bit_equal_to_per_route`: 9 tokens x top-4 over 6 Q2_K/Q3_K experts,
   two route orders, every output bit equal.
-- `gnostral_cpu_kernel_tracks_candle_within_tolerance`: within `1e-3` of the row scale; refuses a
-  non-SiLU activation.
+- `gnostral_cpu_kernel_is_bit_equal_to_candle`: every output bit equal to the `candle` per-route
+  lane; refuses a non-SiLU activation.
 - `executor_configuration_is_explicit`: invalid or contradictory settings are errors.
 
 End to end on a synthetic Qwen3-MoE GGUF (`harness/synthetic-moe/`, receipt
 `evidence/runs/synthetic-moe-e2e-20261023.json`), 32 frozen prompts x 32 tokens through the real
 GGUF load, residency and sampling path:
 
-- `grouped` vs `per-route`: 32/32 prompts token-identical; `gnostral`: 30/32 (two late divergences).
+- `grouped` vs `per-route`: 32/32 prompts token-identical; `gnostral`: 32/32 (30/32 before
+  `0004`, two late divergences from the float combination order).
 - Trace on vs off: 32/32 token-identical (Q-042 semantic neutrality).
-- `gnostral-bench run`: three lanes pinned, warmup + 3 interleaved rounds, every run kept; the
-  comparison is refused because driver health is `UNKNOWN` on a CPU host and the `gnostral` lane
-  fails strict parity, exactly as the rules require.
+- `gnostral-bench run`: three lanes pinned, warmup + 3 interleaved rounds, every run kept, every
+  lane passes strict greedy parity; the comparison is still refused because driver health is
+  `UNKNOWN` on a CPU host, exactly as the rules require.
 - The upstream CPU MoE path (no residency) dequantises the expert stacks to F32 per call and keeps
   F32 activations, so it is not token-identical to the Q8_K residency path (12/32 on this fixture).
 

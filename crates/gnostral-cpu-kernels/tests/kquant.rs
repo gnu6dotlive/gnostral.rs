@@ -13,7 +13,8 @@ use gnostral_cpu_kernels::kquant::{
 };
 use gnostral_cpu_kernels::{
     f16_to_f32, gemm_q8k, grouped_expert_ffn, quantize_rows_q8k, silu, BlockQ2K, BlockQ3K,
-    BlockQ8K, ExpertGroup, FfnShape, GemmShape, Isa, KQuantBlock, KernelError, Pool, QK_K,
+    BlockQ8K, DotKernel, ExpertGroup, FfnShape, GemmShape, Isa, KQuantBlock, KernelError, Numerics,
+    Pool, QK_K,
 };
 
 /// Frozen before the first run: relative bound for Q3_K against the 8-lane reference
@@ -737,5 +738,332 @@ fn unavailable_isa_is_a_typed_error() {
                 Err(KernelError::IsaUnavailable { isa: isa.name() })
             );
         }
+    }
+}
+
+/// Line-by-line transcription of the vendored Candle `avx.rs` `vec_dot_q2k_q8k` and
+/// `vec_dot_q3k_q8k` (candle rev 35d7ae7), the kernels Candle runs when AVX2 and FMA are present.
+#[cfg(target_arch = "x86_64")]
+mod candle_avx {
+    use super::*;
+    use core::arch::x86_64::*;
+
+    const K_SHUFFLE: [u8; 128] = [
+        0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 2, 3, 2, 3, 2, 3, 2, 3, 2, 3, 2, 3, 2, 3,
+        2, 3, 4, 5, 4, 5, 4, 5, 4, 5, 4, 5, 4, 5, 4, 5, 4, 5, 6, 7, 6, 7, 6, 7, 6, 7, 6, 7, 6, 7,
+        6, 7, 6, 7, 8, 9, 8, 9, 8, 9, 8, 9, 8, 9, 8, 9, 8, 9, 8, 9, 10, 11, 10, 11, 10, 11, 10, 11,
+        10, 11, 10, 11, 10, 11, 10, 11, 12, 13, 12, 13, 12, 13, 12, 13, 12, 13, 12, 13, 12, 13, 12,
+        13, 14, 15, 14, 15, 14, 15, 14, 15, 14, 15, 14, 15, 14, 15, 14, 15,
+    ];
+
+    #[target_feature(enable = "avx2,fma")]
+    unsafe fn get_scale_shuffle_q3k(i: usize) -> __m256i {
+        unsafe { _mm256_loadu_si256((K_SHUFFLE.as_ptr() as *const __m256i).add(i)) }
+    }
+
+    #[target_feature(enable = "avx2,fma")]
+    unsafe fn mm256_set_m128i(a: __m128i, b: __m128i) -> __m256i {
+        _mm256_insertf128_si256(_mm256_castsi128_si256(b), a, 1)
+    }
+
+    #[target_feature(enable = "avx2,fma")]
+    unsafe fn hsum_float_8(x: __m256) -> f32 {
+        let res = _mm256_extractf128_ps(x, 1);
+        let res = _mm_add_ps(res, _mm256_castps256_ps128(x));
+        let res = _mm_add_ps(res, _mm_movehl_ps(res, res));
+        let res = _mm_add_ss(res, _mm_movehdup_ps(res));
+        _mm_cvtss_f32(res)
+    }
+
+    #[target_feature(enable = "avx2,fma")]
+    pub unsafe fn vec_dot_q2k_q8k(xs: &[BlockQ2K], ys: &[BlockQ8K]) -> f32 {
+        unsafe {
+            let m3 = _mm256_set1_epi8(3);
+            let m4 = _mm_set1_epi8(0xF);
+            let mut acc = _mm256_setzero_ps();
+            for (x, y) in xs.iter().zip(ys.iter()) {
+                let d = y.d * f16_to_f32(x.d);
+                let dmin = -y.d * f16_to_f32(x.dmin);
+                let mut q2 = x.qs.as_ptr();
+                let mut q8 = y.qs.as_ptr();
+                let mins_and_scales = _mm_loadu_si128(x.scales.as_ptr() as *const __m128i);
+                let scales8 = _mm_and_si128(mins_and_scales, m4);
+                let mins8 = _mm_and_si128(_mm_srli_epi16(mins_and_scales, 4), m4);
+                let mins = _mm256_cvtepi8_epi16(mins8);
+                let prod =
+                    _mm256_madd_epi16(mins, _mm256_loadu_si256(y.bsums.as_ptr() as *const __m256i));
+                acc = _mm256_fmadd_ps(_mm256_broadcast_ss(&dmin), _mm256_cvtepi32_ps(prod), acc);
+                let all_scales = _mm256_cvtepi8_epi16(scales8);
+                let l_scales = _mm256_extracti128_si256(all_scales, 0);
+                let h_scales = _mm256_extracti128_si256(all_scales, 1);
+                let scales = [
+                    mm256_set_m128i(l_scales, l_scales),
+                    mm256_set_m128i(h_scales, h_scales),
+                ];
+                let mut sumi = _mm256_setzero_si256();
+                for scale in scales {
+                    let q2bits = _mm256_loadu_si256(q2 as *const __m256i);
+                    q2 = q2.add(32);
+                    let q8_0 = _mm256_loadu_si256(q8 as *const __m256i);
+                    q8 = q8.add(32);
+                    let q8_1 = _mm256_loadu_si256(q8 as *const __m256i);
+                    q8 = q8.add(32);
+                    let q8_2 = _mm256_loadu_si256(q8 as *const __m256i);
+                    q8 = q8.add(32);
+                    let q8_3 = _mm256_loadu_si256(q8 as *const __m256i);
+                    q8 = q8.add(32);
+                    let q2_0 = _mm256_and_si256(q2bits, m3);
+                    let q2_1 = _mm256_and_si256(_mm256_srli_epi16(q2bits, 2), m3);
+                    let q2_2 = _mm256_and_si256(_mm256_srli_epi16(q2bits, 4), m3);
+                    let q2_3 = _mm256_and_si256(_mm256_srli_epi16(q2bits, 6), m3);
+                    let p0 = _mm256_maddubs_epi16(q2_0, q8_0);
+                    let p1 = _mm256_maddubs_epi16(q2_1, q8_1);
+                    let p2 = _mm256_maddubs_epi16(q2_2, q8_2);
+                    let p3 = _mm256_maddubs_epi16(q2_3, q8_3);
+                    let p0 =
+                        _mm256_madd_epi16(_mm256_shuffle_epi8(scale, get_scale_shuffle_q3k(0)), p0);
+                    let p1 =
+                        _mm256_madd_epi16(_mm256_shuffle_epi8(scale, get_scale_shuffle_q3k(1)), p1);
+                    let p2 =
+                        _mm256_madd_epi16(_mm256_shuffle_epi8(scale, get_scale_shuffle_q3k(2)), p2);
+                    let p3 =
+                        _mm256_madd_epi16(_mm256_shuffle_epi8(scale, get_scale_shuffle_q3k(3)), p3);
+                    let p0 = _mm256_add_epi32(p0, p1);
+                    let p2 = _mm256_add_epi32(p2, p3);
+                    sumi = _mm256_add_epi32(sumi, _mm256_add_epi32(p0, p2));
+                }
+                acc = _mm256_fmadd_ps(_mm256_broadcast_ss(&d), _mm256_cvtepi32_ps(sumi), acc);
+            }
+            hsum_float_8(acc)
+        }
+    }
+
+    #[target_feature(enable = "avx2,fma")]
+    unsafe fn q3h(hbits: __m256i, mone: __m256i, bit: i32) -> __m256i {
+        let count = _mm_cvtsi32_si128(bit);
+        let masked = _mm256_andnot_si256(hbits, _mm256_sll_epi16(mone, count));
+        _mm256_slli_epi16(_mm256_srl_epi16(masked, count), 2)
+    }
+
+    #[target_feature(enable = "avx2,fma")]
+    pub unsafe fn vec_dot_q3k_q8k(xs: &[BlockQ3K], ys: &[BlockQ8K]) -> f32 {
+        const KMASK1: u32 = 0x03030303;
+        const KMASK2: u32 = 0x0f0f0f0f;
+        let mut aux = [0u32; 3];
+        unsafe {
+            let m3 = _mm256_set1_epi8(3);
+            let mone = _mm256_set1_epi8(1);
+            let m32 = _mm_set1_epi8(32);
+            let mut acc = _mm256_setzero_ps();
+            for (x, y) in xs.iter().zip(ys.iter()) {
+                let d = y.d * f16_to_f32(x.d);
+                let mut q3 = x.qs.as_ptr();
+                let mut q8 = y.qs.as_ptr();
+                for (i, a) in aux.iter_mut().enumerate() {
+                    *a = u32::from_le_bytes(x.scales[4 * i..4 * i + 4].try_into().unwrap());
+                }
+                let scales128 = _mm_set_epi32(
+                    (((aux[1] >> 4) & KMASK2) | (((aux[2] >> 6) & KMASK1) << 4)) as i32,
+                    (((aux[0] >> 4) & KMASK2) | (((aux[2] >> 4) & KMASK1) << 4)) as i32,
+                    ((aux[1] & KMASK2) | (((aux[2] >> 2) & KMASK1) << 4)) as i32,
+                    ((aux[0] & KMASK2) | (((aux[2]) & KMASK1) << 4)) as i32,
+                );
+                let scales128 = _mm_sub_epi8(scales128, m32);
+                let all_scales = _mm256_cvtepi8_epi16(scales128);
+                let l_scales = _mm256_extracti128_si256(all_scales, 0);
+                let h_scales = _mm256_extracti128_si256(all_scales, 1);
+                let scales = [
+                    mm256_set_m128i(l_scales, l_scales),
+                    mm256_set_m128i(h_scales, h_scales),
+                ];
+                let hbits = _mm256_loadu_si256(x.hmask.as_ptr() as *const __m256i);
+                let mut sumi = _mm256_setzero_si256();
+                for (j, scale) in scales.iter().enumerate() {
+                    let q3bits = _mm256_loadu_si256(q3 as *const __m256i);
+                    q3 = q3.add(32);
+                    let base = if j == 0 { 0 } else { 4 };
+                    let q3l_0 = _mm256_and_si256(q3bits, m3);
+                    let q3h_0 = q3h(hbits, mone, base);
+                    let q3l_1 = _mm256_and_si256(_mm256_srli_epi16(q3bits, 2), m3);
+                    let q3h_1 = q3h(hbits, mone, base + 1);
+                    let q3l_2 = _mm256_and_si256(_mm256_srli_epi16(q3bits, 4), m3);
+                    let q3h_2 = q3h(hbits, mone, base + 2);
+                    let q3l_3 = _mm256_and_si256(_mm256_srli_epi16(q3bits, 6), m3);
+                    let q3h_3 = q3h(hbits, mone, base + 3);
+                    let q8_0 = _mm256_loadu_si256(q8 as *const __m256i);
+                    q8 = q8.add(32);
+                    let q8_1 = _mm256_loadu_si256(q8 as *const __m256i);
+                    q8 = q8.add(32);
+                    let q8_2 = _mm256_loadu_si256(q8 as *const __m256i);
+                    q8 = q8.add(32);
+                    let q8_3 = _mm256_loadu_si256(q8 as *const __m256i);
+                    q8 = q8.add(32);
+                    let q8s_0 = _mm256_maddubs_epi16(q3h_0, q8_0);
+                    let q8s_1 = _mm256_maddubs_epi16(q3h_1, q8_1);
+                    let q8s_2 = _mm256_maddubs_epi16(q3h_2, q8_2);
+                    let q8s_3 = _mm256_maddubs_epi16(q3h_3, q8_3);
+                    let p16_0 = _mm256_sub_epi16(_mm256_maddubs_epi16(q3l_0, q8_0), q8s_0);
+                    let p16_1 = _mm256_sub_epi16(_mm256_maddubs_epi16(q3l_1, q8_1), q8s_1);
+                    let p16_2 = _mm256_sub_epi16(_mm256_maddubs_epi16(q3l_2, q8_2), q8s_2);
+                    let p16_3 = _mm256_sub_epi16(_mm256_maddubs_epi16(q3l_3, q8_3), q8s_3);
+                    let p16_0 = _mm256_madd_epi16(
+                        _mm256_shuffle_epi8(*scale, get_scale_shuffle_q3k(0)),
+                        p16_0,
+                    );
+                    let p16_1 = _mm256_madd_epi16(
+                        _mm256_shuffle_epi8(*scale, get_scale_shuffle_q3k(1)),
+                        p16_1,
+                    );
+                    let p16_2 = _mm256_madd_epi16(
+                        _mm256_shuffle_epi8(*scale, get_scale_shuffle_q3k(2)),
+                        p16_2,
+                    );
+                    let p16_3 = _mm256_madd_epi16(
+                        _mm256_shuffle_epi8(*scale, get_scale_shuffle_q3k(3)),
+                        p16_3,
+                    );
+                    let p16_0 = _mm256_add_epi32(p16_0, p16_1);
+                    let p16_2 = _mm256_add_epi32(p16_2, p16_3);
+                    sumi = _mm256_add_epi32(sumi, _mm256_add_epi32(p16_0, p16_2));
+                }
+                acc = _mm256_fmadd_ps(_mm256_broadcast_ss(&d), _mm256_cvtepi32_ps(sumi), acc);
+            }
+            hsum_float_8(acc)
+        }
+    }
+}
+
+/// `Numerics::CandleCompat` must equal what the vendored Candle `vec_dot` returns on this host.
+fn candle_expected_q2k(w: &[BlockQ2K], a: &[BlockQ8K]) -> f32 {
+    #[cfg(target_arch = "x86_64")]
+    if gnostral_cpu_kernels::candle_uses_avx2_fma() {
+        // SAFETY: AVX2 and FMA detected.
+        return unsafe { candle_avx::vec_dot_q2k_q8k(w, a) };
+    }
+    reference::q2k_vec_dot(w, a)
+}
+
+fn candle_expected_q3k(w: &[BlockQ3K], a: &[BlockQ8K]) -> f32 {
+    #[cfg(target_arch = "x86_64")]
+    if gnostral_cpu_kernels::candle_uses_avx2_fma() {
+        // SAFETY: AVX2 and FMA detected.
+        return unsafe { candle_avx::vec_dot_q3k_q8k(w, a) };
+    }
+    reference::q3k_vec_dot(w, a)
+}
+
+#[test]
+fn candle_compat_fallback_without_fma_is_bit_equal_to_vec_dot_unopt() {
+    let mut rng = Rng(0xab);
+    for blocks in [1usize, 3, 8] {
+        for _ in 0..50 {
+            let w: Vec<BlockQ3K> = (0..blocks).map(|_| q3k(&mut rng)).collect();
+            let a = q8k_row(&activations(&mut rng, blocks * QK_K));
+            assert_eq!(
+                gnostral_cpu_kernels::kquant::q3k_dot_candle_unopt(&w, &a).to_bits(),
+                reference::q3k_vec_dot(&w, &a).to_bits()
+            );
+        }
+    }
+}
+
+fn compat(isa: Isa) -> DotKernel {
+    DotKernel {
+        isa,
+        numerics: Numerics::CandleCompat,
+    }
+}
+
+#[test]
+fn candle_compat_dot_bit_equal_to_candle_on_every_isa() {
+    let mut rng = Rng(0x5eed_cafe);
+    let mut extreme = vec![extreme_q8k(); 2];
+    extreme[1].d = -0.25;
+    for blocks in [1usize, 2, 5, 8] {
+        for case in 0..60 {
+            let a = if case == 0 && blocks == 2 {
+                extreme.clone()
+            } else {
+                q8k_row(&activations(&mut rng, blocks * QK_K))
+            };
+            let w2: Vec<BlockQ2K> = (0..blocks).map(|_| q2k(&mut rng)).collect();
+            let mut w3: Vec<BlockQ3K> = (0..blocks).map(|_| q3k(&mut rng)).collect();
+            if case == 1 {
+                w3[0].hmask = [0; 32];
+                w3[0].scales = [0xFF; 12];
+            }
+            let e2 = candle_expected_q2k(&w2, &a);
+            let e3 = candle_expected_q3k(&w3, &a);
+            for isa in isas() {
+                assert_eq!(
+                    BlockQ2K::dot_with(compat(isa), &w2, &a).to_bits(),
+                    e2.to_bits(),
+                    "q2k {isa:?} blocks {blocks} case {case}"
+                );
+                assert_eq!(
+                    BlockQ3K::dot_with(compat(isa), &w3, &a).to_bits(),
+                    e3.to_bits(),
+                    "q3k {isa:?} blocks {blocks} case {case}"
+                );
+            }
+        }
+    }
+}
+
+#[test]
+fn candle_compat_grouped_ffn_bit_equal_to_candle_composition() {
+    let mut rng = Rng(0xf00d);
+    let (hidden, inter) = (512, 256);
+    let (hb, ib) = (hidden / QK_K, inter / QK_K);
+    let gate: Vec<BlockQ2K> = (0..inter * hb).map(|_| q2k(&mut rng)).collect();
+    let up: Vec<BlockQ2K> = (0..inter * hb).map(|_| q2k(&mut rng)).collect();
+    let down: Vec<BlockQ3K> = (0..hidden * ib).map(|_| q3k(&mut rng)).collect();
+    let rows = 3;
+    let x = activations(&mut rng, rows * hidden);
+    let group = ExpertGroup {
+        gate: &gate,
+        up: &up,
+        down: &down,
+        x: &x,
+        rows,
+    };
+    for isa in isas() {
+        let got = grouped_expert_ffn(
+            compat(isa),
+            Pool::global(),
+            FfnShape { hidden, inter },
+            &[group_ref(&group)],
+            silu,
+        )
+        .unwrap();
+        for r in 0..rows {
+            let xq = q8k_row(&x[r * hidden..(r + 1) * hidden]);
+            let h: Vec<f32> = (0..inter)
+                .map(|c| {
+                    let g = candle_expected_q2k(&gate[c * hb..(c + 1) * hb], &xq);
+                    let u = candle_expected_q2k(&up[c * hb..(c + 1) * hb], &xq);
+                    silu(g) * u
+                })
+                .collect();
+            let hq = q8k_row(&h);
+            for c in 0..hidden {
+                let want = candle_expected_q3k(&down[c * ib..(c + 1) * ib], &hq);
+                assert_eq!(
+                    got[0][r * hidden + c].to_bits(),
+                    want.to_bits(),
+                    "{isa:?} row {r} col {c}"
+                );
+            }
+        }
+    }
+}
+
+fn group_ref<'a>(g: &ExpertGroup<'a, BlockQ2K, BlockQ3K>) -> ExpertGroup<'a, BlockQ2K, BlockQ3K> {
+    ExpertGroup {
+        gate: g.gate,
+        up: g.up,
+        down: g.down,
+        x: g.x,
+        rows: g.rows,
     }
 }

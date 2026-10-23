@@ -76,7 +76,9 @@ pub use kernel::{
     avx2_available, dot_block_q8_0_i32, dot_block_q8_0_i32_scalar, dot_q8_0, dot_q8_0_scalar,
     gate_up_row_q8_0, gemm_q8_0, gemm_q8_0_scalar, MAX_SAFE_K,
 };
-pub use kquant::{BlockQ2K, BlockQ3K, BlockQ8K, Isa, KQuantBlock, QK_K};
+pub use kquant::{
+    candle_uses_avx2_fma, BlockQ2K, BlockQ3K, BlockQ8K, DotKernel, Isa, KQuantBlock, Numerics, QK_K,
+};
 pub use pool::{Pool, THREADS_ENV};
 pub use tolerance::{dequant_error_bound, dot_error_bound, F16_REL_EPS, F16_SUBNORMAL_STEP};
 

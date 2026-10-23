@@ -1,0 +1,96 @@
+From 48be92c374ef044f12f165932f5434c1addf668a Mon Sep 17 00:00:00 2001
+From: Jordan <dev.in@gnu6.live>
+Date: Fri, 23 Oct 2026 23:48:03 +0000
+Subject: [PATCH] feat(moe): gnostral CPU expert kernel bit-equal to candle via
+ CandleCompat numerics (Q-029)
+
+The gnostral lane now replays the float combination of the Candle k-quant
+kernel this host dispatches to (AVX2+FMA lanes or vec_dot_unopt), so it is
+bit-equal to the candle lane; the residency test asserts bit equality.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_016D4Xz7aLLGu873oZNF6vk4
+---
+ mistralrs-core/src/moe/experts/residency.rs       | 12 ++++++++++--
+ mistralrs-core/src/moe/experts/residency_tests.rs | 10 ++++------
+ mistralrs-core/src/pipeline/mod.rs                |  5 ++++-
+ 3 files changed, 18 insertions(+), 9 deletions(-)
+
+diff --git a/mistralrs-core/src/moe/experts/residency.rs b/mistralrs-core/src/moe/experts/residency.rs
+index e4f59ed..1d4b6b2 100644
+--- a/mistralrs-core/src/moe/experts/residency.rs
++++ b/mistralrs-core/src/moe/experts/residency.rs
+@@ -991,7 +991,9 @@ fn gnostral_ffn_typed<
+     hidden: usize,
+     act: fn(f32) -> f32,
+ ) -> Result<Vec<Vec<f32>>> {
+-    use gnostral_cpu_kernels::{kquant::blocks_from_bytes, ExpertGroup, FfnShape, Isa, Pool, QK_K};
++    use gnostral_cpu_kernels::{
++        kquant::blocks_from_bytes, DotKernel, ExpertGroup, FfnShape, Isa, Numerics, Pool, QK_K,
++    };
+     let (experts, inter, gate_hidden) = host.gate.shape().dims3()?;
+     if gate_hidden != hidden || host.down.shape().dims() != [experts, hidden, inter] {
+         candle_core::bail!("gnostral cpu kernel expert geometry mismatch");
+@@ -1023,8 +1025,14 @@ fn gnostral_ffn_typed<
+             rows: g.len,
+         })
+         .collect::<Vec<_>>();
++    // CandleCompat replays the float combination of the Candle kernel this host runs, so the lane is
++    // bit-equal to `candle` while the integer part uses the widest ISA available.
++    let kernel = DotKernel {
++        isa: Isa::detect(),
++        numerics: Numerics::CandleCompat,
++    };
+     gnostral_cpu_kernels::grouped_expert_ffn(
+-        Isa::detect(),
++        kernel,
+         Pool::global(),
+         FfnShape { hidden, inter },
+         &ffn_groups,
+diff --git a/mistralrs-core/src/moe/experts/residency_tests.rs b/mistralrs-core/src/moe/experts/residency_tests.rs
+index 3c3e1f5..815b99f 100644
+--- a/mistralrs-core/src/moe/experts/residency_tests.rs
++++ b/mistralrs-core/src/moe/experts/residency_tests.rs
+@@ -504,7 +504,7 @@ fn grouped_cpu_executor_is_bit_equal_to_per_route() -> candle_core::Result<()> {
+ }
+ 
+ #[test]
+-fn gnostral_cpu_kernel_tracks_candle_within_tolerance() -> candle_core::Result<()> {
++fn gnostral_cpu_kernel_is_bit_equal_to_candle() -> candle_core::Result<()> {
+     let tokens = 9;
+     let xs = grouped_input(tokens)?;
+     let routes = varied_routes(tokens, 4);
+@@ -516,11 +516,9 @@ fn gnostral_cpu_kernel_tracks_candle_within_tolerance() -> candle_core::Result<(
+     let got = gnostral
+         .forward_with(0, &xs, &routes, |x| x.silu(), Some(silu))?
+         .to_vec2::<f32>()?;
+-    for (row_got, row_ref) in got.iter().zip(&reference) {
+-        let scale = row_ref.iter().fold(0f32, |m, v| m.max(v.abs())).max(1e-6);
+-        for (a, b) in row_got.iter().zip(row_ref) {
+-            // Same Q8_K activations; only float reduction order differs (frozen in Q-029).
+-            assert!((a - b).abs() <= 1e-3 * scale, "{a} vs {b}");
++    for (r, (row_got, row_ref)) in got.iter().zip(&reference).enumerate() {
++        for (c, (a, b)) in row_got.iter().zip(row_ref).enumerate() {
++            assert_eq!(a.to_bits(), b.to_bits(), "row {r} col {c}: {a} vs {b}");
+         }
+     }
+     assert!(gnostral
+diff --git a/mistralrs-core/src/pipeline/mod.rs b/mistralrs-core/src/pipeline/mod.rs
+index 2b7de91..6d564ca 100644
+--- a/mistralrs-core/src/pipeline/mod.rs
++++ b/mistralrs-core/src/pipeline/mod.rs
+@@ -2072,7 +2072,10 @@ pub trait Pipeline:
+                     let raw_logits = self
+                         .forward_inputs(inputs, return_raw_logits)?
+                         .into_cpu_for_batch(input_seqs.len(), preserve_causal_generation)?;
+-                    crate::gnostral_trace::stop(crate::gnostral_trace::Phase::Forward, forward_span);
++                    crate::gnostral_trace::stop(
++                        crate::gnostral_trace::Phase::Forward,
++                        forward_span,
++                    );
+                     let end = Instant::now();
+                     exec_duration += end.duration_since(start);
+ 
+-- 
+2.43.0
+

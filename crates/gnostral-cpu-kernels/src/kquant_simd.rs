@@ -1,9 +1,10 @@
 //! AVX2 and AVX-512BW integer parts of the K-quant dot products.
 //!
-//! Each function returns exactly the same `i32` as its scalar counterpart in
-//! [`crate::kquant`]: `u8 x i8` pairs go through `maddubs` (no saturation is
-//! reachable: `u <= 7`, `|q8| <= 128`, so a pair sum is at most 1792) and the
-//! per-sub-block scales through `madd` into `i32` lanes.
+//! Each function returns exactly the same eight `i32` lanes as its scalar
+//! counterpart in [`crate::kquant`] (lane `j` holds the values `e` with
+//! `(e % 32) / 4 == j`, Candle's AVX2 order): `u8 x i8` pairs go through
+//! `maddubs` (no saturation is reachable: `u <= 7`, `|q8| <= 128`, so a pair sum
+//! is at most 1792) and the per-sub-block scales through `madd` into `i32` lanes.
 
 #![cfg(target_arch = "x86_64")]
 
@@ -12,13 +13,31 @@ use core::arch::x86_64::*;
 
 #[inline]
 #[target_feature(enable = "avx2")]
-fn hsum_avx2(acc: __m256i) -> i32 {
-    let lo = _mm256_castsi256_si128(acc);
-    let hi = _mm256_extracti128_si256::<1>(acc);
-    let s = _mm_add_epi32(lo, hi);
-    let s = _mm_add_epi32(s, _mm_shuffle_epi32::<0b0100_1110>(s));
-    let s = _mm_add_epi32(s, _mm_shuffle_epi32::<0b1011_0001>(s));
-    _mm_cvtsi128_si32(s)
+fn lanes_avx2(acc: __m256i) -> [i32; 8] {
+    let mut out = [0i32; 8];
+    // SAFETY: `out` is 32 writable bytes.
+    unsafe { _mm256_storeu_si256(out.as_mut_ptr() as *mut __m256i, acc) };
+    out
+}
+
+/// Lanes `j` and `j + 8` hold the same `(e % 32) / 4` class.
+#[inline]
+#[target_feature(enable = "avx512f,avx512bw")]
+fn lanes_avx512(acc: __m512i) -> [i32; 8] {
+    let mut all = [0i32; 16];
+    // SAFETY: `all` is 64 writable bytes.
+    unsafe { _mm512_storeu_si512(all.as_mut_ptr() as *mut __m512i, acc) };
+    std::array::from_fn(|j| all[j] + all[j + 8])
+}
+
+/// `maddubs(u, q8) - maddubs(4, q8)`: the signed `Q3_K` value `u - 4` without a signed operand.
+#[inline]
+#[target_feature(enable = "avx2")]
+fn q3k_signed_pairs_avx2(u: __m256i, q8: __m256i) -> __m256i {
+    _mm256_sub_epi16(
+        _mm256_maddubs_epi16(u, q8),
+        _mm256_maddubs_epi16(_mm256_set1_epi8(4), q8),
+    )
 }
 
 #[inline]
@@ -47,7 +66,7 @@ fn join(lo: __m256i, hi: __m256i) -> __m512i {
 /// # Safety
 /// AVX2 must be available.
 #[target_feature(enable = "avx2")]
-pub(crate) unsafe fn q2k_isum_avx2(x: &BlockQ2K, y: &BlockQ8K) -> i32 {
+pub(crate) unsafe fn q2k_lanes_avx2(x: &BlockQ2K, y: &BlockQ8K) -> [i32; 8] {
     let mask = _mm256_set1_epi8(3);
     let mut acc = _mm256_setzero_si256();
     for chunk in 0..2 {
@@ -69,13 +88,13 @@ pub(crate) unsafe fn q2k_isum_avx2(x: &BlockQ2K, y: &BlockQ8K) -> i32 {
             acc = _mm256_add_epi32(acc, _mm256_madd_epi16(p, sv));
         }
     }
-    hsum_avx2(acc)
+    lanes_avx2(acc)
 }
 
 /// # Safety
 /// AVX-512F and AVX-512BW must be available.
 #[target_feature(enable = "avx512f,avx512bw,avx2")]
-pub(crate) unsafe fn q2k_isum_avx512(x: &BlockQ2K, y: &BlockQ8K) -> i32 {
+pub(crate) unsafe fn q2k_lanes_avx512(x: &BlockQ2K, y: &BlockQ8K) -> [i32; 8] {
     let mask = _mm256_set1_epi8(3);
     let mut acc = _mm512_setzero_si512();
     for chunk in 0..2 {
@@ -104,7 +123,7 @@ pub(crate) unsafe fn q2k_isum_avx512(x: &BlockQ2K, y: &BlockQ8K) -> i32 {
             acc = _mm512_add_epi32(acc, _mm512_madd_epi16(p, sv));
         }
     }
-    _mm512_reduce_add_epi32(acc)
+    lanes_avx512(acc)
 }
 
 #[inline]
@@ -125,7 +144,7 @@ fn q3k_unsigned_avx2(bits: __m256i, hmask: __m256i, g: usize) -> __m256i {
 /// # Safety
 /// AVX2 must be available.
 #[target_feature(enable = "avx2")]
-pub(crate) unsafe fn q3k_isum_avx2(x: &BlockQ3K, y: &BlockQ8K, scales: &[i8; 16]) -> i32 {
+pub(crate) unsafe fn q3k_lanes_avx2(x: &BlockQ3K, y: &BlockQ8K, scales: &[i8; 16]) -> [i32; 8] {
     // SAFETY: hmask has 32 bytes.
     let hmask = unsafe { _mm256_loadu_si256(x.hmask.as_ptr() as *const __m256i) };
     let mut acc = _mm256_setzero_si256();
@@ -137,18 +156,18 @@ pub(crate) unsafe fn q3k_isum_avx2(x: &BlockQ3K, y: &BlockQ8K, scales: &[i8; 16]
             let u = q3k_unsigned_avx2(bits, hmask, g);
             // SAFETY: g * 32 + 32 <= 256.
             let q8 = unsafe { _mm256_loadu_si256(y.qs.as_ptr().add(g * 32) as *const __m256i) };
-            let p = _mm256_maddubs_epi16(u, q8);
+            let p = q3k_signed_pairs_avx2(u, q8);
             let sv = pair_scales_avx2(i16::from(scales[2 * g]), i16::from(scales[2 * g + 1]));
             acc = _mm256_add_epi32(acc, _mm256_madd_epi16(p, sv));
         }
     }
-    hsum_avx2(acc)
+    lanes_avx2(acc)
 }
 
 /// # Safety
 /// AVX-512F and AVX-512BW must be available.
 #[target_feature(enable = "avx512f,avx512bw,avx2")]
-pub(crate) unsafe fn q3k_isum_avx512(x: &BlockQ3K, y: &BlockQ8K, scales: &[i8; 16]) -> i32 {
+pub(crate) unsafe fn q3k_lanes_avx512(x: &BlockQ3K, y: &BlockQ8K, scales: &[i8; 16]) -> [i32; 8] {
     // SAFETY: hmask has 32 bytes.
     let hmask = unsafe { _mm256_loadu_si256(x.hmask.as_ptr() as *const __m256i) };
     let mut acc = _mm512_setzero_si512();
@@ -163,7 +182,10 @@ pub(crate) unsafe fn q3k_isum_avx512(x: &BlockQ3K, y: &BlockQ8K, scales: &[i8; 1
             );
             // SAFETY: g * 32 + 64 <= 256.
             let q8 = unsafe { _mm512_loadu_si512(y.qs.as_ptr().add(g * 32) as *const __m512i) };
-            let p = _mm512_maddubs_epi16(u, q8);
+            let p = _mm512_sub_epi16(
+                _mm512_maddubs_epi16(u, q8),
+                _mm512_maddubs_epi16(_mm512_set1_epi8(4), q8),
+            );
             let sv = quad_scales_avx512([
                 i16::from(scales[2 * g]),
                 i16::from(scales[2 * g + 1]),
@@ -173,5 +195,5 @@ pub(crate) unsafe fn q3k_isum_avx512(x: &BlockQ3K, y: &BlockQ8K, scales: &[i8; 1
             acc = _mm512_add_epi32(acc, _mm512_madd_epi16(p, sv));
         }
     }
-    _mm512_reduce_add_epi32(acc)
+    lanes_avx512(acc)
 }

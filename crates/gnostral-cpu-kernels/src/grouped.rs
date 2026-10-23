@@ -8,13 +8,13 @@
 //!
 //! # Determinism
 //!
-//! Every output element is produced by one call to [`KQuantBlock::dot`] on one
+//! Every output element is produced by one call to [`KQuantBlock::dot_with`] on one
 //! activation row and one weight row; activation rows are quantised
 //! independently. An element therefore does not depend on the thread count, on
 //! which other rows share its group, or on how groups are batched together.
 //! The tests assert bit equality for all three.
 
-use crate::kquant::{quantize_row_q8k, BlockQ8K, Isa, KQuantBlock, QK_K};
+use crate::kquant::{quantize_row_q8k, BlockQ8K, DotKernel, Isa, KQuantBlock, QK_K};
 use crate::pool::{Pool, SharedOut};
 use crate::KernelError;
 
@@ -66,7 +66,7 @@ pub struct GemmShape {
 /// `act` holds `m * k / 256` blocks, row-major; `w` holds `n * k / 256` blocks,
 /// one row per output column; `out` holds `m * n` values.
 pub fn gemm_q8k<W: KQuantBlock>(
-    isa: Isa,
+    kernel: impl Into<DotKernel>,
     pool: &Pool,
     shape: GemmShape,
     act: &[BlockQ8K],
@@ -74,7 +74,8 @@ pub fn gemm_q8k<W: KQuantBlock>(
     out: &mut [f32],
 ) -> Result<(), KernelError> {
     let GemmShape { m, k, n } = shape;
-    check_isa(isa)?;
+    let kernel = kernel.into();
+    check_isa(kernel.isa)?;
     let kb = check_k(k)?;
     check_len(
         "act",
@@ -97,7 +98,7 @@ pub fn gemm_q8k<W: KQuantBlock>(
         for col in start..(start + COLUMN_TILE).min(n) {
             let row_w = &w[col * kb..(col + 1) * kb];
             for row in 0..m {
-                let value = W::dot(isa, row_w, &act[row * kb..(row + 1) * kb]);
+                let value = W::dot_with(kernel, row_w, &act[row * kb..(row + 1) * kb]);
                 // SAFETY: (row, col) is in bounds and owned by this tile only.
                 unsafe { dst.write(row * n + col, value) };
             }
@@ -167,13 +168,14 @@ impl TileMap {
 /// is computed in `f32` and quantised once for down. Each of the three phases
 /// is a single pool dispatch over every group's column tiles.
 pub fn grouped_expert_ffn<G: KQuantBlock, D: KQuantBlock>(
-    isa: Isa,
+    kernel: impl Into<DotKernel>,
     pool: &Pool,
     shape: FfnShape,
     groups: &[ExpertGroup<'_, G, D>],
     act: impl Fn(f32) -> f32 + Sync,
 ) -> Result<Vec<Vec<f32>>, KernelError> {
-    check_isa(isa)?;
+    let kernel = kernel.into();
+    check_isa(kernel.isa)?;
     let FfnShape { hidden, inter } = shape;
     let hb = check_k(hidden)?;
     let ib = check_k(inter)?;
@@ -215,8 +217,8 @@ pub fn grouped_expert_ffn<G: KQuantBlock, D: KQuantBlock>(
                     let a = &xq[gi][row * hb..(row + 1) * hb];
                     // SAFETY: (row, col) of group gi is owned by this tile only.
                     unsafe {
-                        gate_dst[gi].write(row * inter + col, G::dot(isa, wg, a));
-                        up_dst[gi].write(row * inter + col, G::dot(isa, wu, a));
+                        gate_dst[gi].write(row * inter + col, G::dot_with(kernel, wg, a));
+                        up_dst[gi].write(row * inter + col, G::dot_with(kernel, wu, a));
                     }
                 }
             }
@@ -245,7 +247,7 @@ pub fn grouped_expert_ffn<G: KQuantBlock, D: KQuantBlock>(
                 for row in 0..g.rows {
                     let a = &hq[gi][row * ib..(row + 1) * ib];
                     // SAFETY: (row, col) of group gi is owned by this tile only.
-                    unsafe { dst[gi].write(row * hidden + col, D::dot(isa, wd, a)) };
+                    unsafe { dst[gi].write(row * hidden + col, D::dot_with(kernel, wd, a)) };
                 }
             }
         });
