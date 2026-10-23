@@ -1,0 +1,37 @@
+{
+  "schema": "gnostral.quality.promptset/1",
+  "name": "six-check-20261023",
+  "frozen": "2026-10-23",
+  "prompts": [
+    {
+      "id": "p1-factual",
+      "text": "What is the capital of Australia, and which year did it become the capital?",
+      "sha256": "58383c36a3609858f16fdcea56fc31561217e28281a81378c8127ef1a025aafd"
+    },
+    {
+      "id": "p2-code",
+      "text": "Write a Rust function that returns the median of a slice of f64 values without sorting the input in place. Explain the complexity.",
+      "sha256": "aff5a23c2eaf0e56e3718a1d57687029e23883b98d5971b871f9b53adccc41de"
+    },
+    {
+      "id": "p3-multilingual",
+      "text": "Explique en français, en une phrase, la différence entre un quantificateur Q4_K et un quantificateur Q8_0.",
+      "sha256": "8dfb737545b64925948b1918649ac6afe70b1b9ec612b33f9405f96ad51dcde6"
+    },
+    {
+      "id": "p4-arithmetic",
+      "text": "A model uses 8 experts per token, each expert reads 1.5 MiB per token, and it decodes 20 tokens per second. How many MiB per second cross the PCIe bus? Show the arithmetic.",
+      "sha256": "013a454b75669315d92f4b56f6effb1a5386ebc976b8bc4e5daa55e22cb70d16"
+    },
+    {
+      "id": "p5-longform",
+      "text": "Summarise the trade-off between expert residency in VRAM and expert streaming from host memory for a 30B-parameter mixture-of-experts model on an 8 GiB GPU. Use at most 150 words.",
+      "sha256": "965374dfc51777971d49646f0a3a3dbae3f403e7e2b5fea101ab28c68148f5f1"
+    },
+    {
+      "id": "p6-instruction",
+      "text": "List exactly three risks of benchmarking an inference engine with a warm file cache. Number them 1 to 3, no preamble.",
+      "sha256": "bc12c72040c3153ffe27bb84ba74ef511c9a49cf22d2eb4cc747232d086fc395"
+    }
+  ]
+}
