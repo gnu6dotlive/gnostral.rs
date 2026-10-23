@@ -87,6 +87,24 @@ Possible only after M1–M4 and additional authority/security review: admission 
 
 Parallel research may be executed in independent worktrees; **no research intake is authorized to silently alter the Q012-pinned CUDA runtime**.
 
+## Engine program — PROPOSED
+
+A separate, gated program for the engine itself: **run a 30B-class MoE model on an 8 GiB consumer GPU at quality parity, faster than anything that fits that card, with reusable measurements.** Program of record: [ENGINE_PROGRAM.md](ENGINE_PROGRAM.md) — thesis, scorecard, five invariants, workstreams W1–W6, milestone ladder M0–M6, decision gates D1–D4, and the evidence policy ("no number without a receipt").
+
+Lanes A and B above are unchanged by it. The engine program does not replace **Q-013D → Q-014 → Q-015 → Q-016**, does not merge engines, and does not touch **BURN-REMOTE-01**. At present **no engine speed claim exists**: only offline, CPU-only pieces of Q-026, Q-029, Q-030 and Q-031 are implemented, with no receipt.
+
+| Workstream | Quests (all **PROPOSED**) |
+| --- | --- |
+| W1 · MoE executor + CPU kernels | [Q-026](../quests/Q-026-MOE-EXECUTOR-02.md) MOE-EXECUTOR-02 · [Q-029](../quests/Q-029-CPU-KERNEL-Q8-01.md) CPU-KERNEL-Q8-01 · [Q-037](../quests/Q-037-PREFETCH-EXPERT-01.md) PREFETCH-EXPERT-01 (stretch) |
+| W2 · Memory hierarchy | [Q-027](../quests/Q-027-RESIDENCY-DYNAMIC-01.md) RESIDENCY-DYNAMIC-01 · [Q-028](../quests/Q-028-PAGED-OFFLOAD-01.md) PAGED-OFFLOAD-01 · [Q-038](../quests/Q-038-KV-STREAM-01.md) KV-STREAM-01 |
+| W3 · Scheduler + speculation | [Q-039](../quests/Q-039-SLO-SCHED-01.md) SLO-SCHED-01 |
+| W4 · Supervisor + provider | [Q-040](../quests/Q-040-MULTI-ENGINE-01.md) MULTI-ENGINE-01 · [Q-041](../quests/Q-041-DESKTOP-RESERVE-01.md) DESKTOP-RESERVE-01 |
+| W5 · Evidence + quality | [Q-030](../quests/Q-030-QUALITY-PARITY-01.md) QUALITY-PARITY-01 · [Q-031](../quests/Q-031-ENGINE-PERF-01.md) ENGINE-PERF-01 · [Q-042](../quests/Q-042-PROFILE-SPARK-01.md) PROFILE-SPARK-01 |
+| W6 · Coverage + packaging | [Q-033](../quests/Q-033-MODEL-MATRIX-01.md) MODEL-MATRIX-01 · [Q-034](../quests/Q-034-PACKAGING-01.md) PACKAGING-01 |
+| Unallocated | [Q-032](../quests/Q-032-RESERVED.md) · [Q-035](../quests/Q-035-RESERVED.md) · [Q-036](../quests/Q-036-RESERVED.md) — reserved numbers, no scope |
+
+Order of work: M0 oracle + baseline (Q-025, Q-030, Q-031) → M1 executor (Q-026, Q-029) → M2 memory (Q-027, Q-028, Q-038) → M3 scheduler (Q-018…Q-021, Q-039) → M4 supervisor (Q-024b, Q-013D→Q-016, Q-040, Q-041) → M5 coverage (Q-033, Q-034) → M6 stretch (Q-037, AMD port). D2 at the end of M1 can legitimately end the Rust-executor bet; the negative result then stays public.
+
 ## Stop and release gates
 
 - **Host:** use `gnu6-lab-run --exclusive` for inference, CUDA or heavy builds; read live RAM, GPU and graphical-session health before each attempt; do not disable systemd-oomd.
