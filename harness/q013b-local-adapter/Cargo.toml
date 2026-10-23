@@ -3,7 +3,10 @@ name = "gnostral-q013b-local-adapter"
 version = "0.0.1"
 edition = "2021"
 license = "MIT"
+description = "Bounded local subprocess fixture for the Q-013-B evidence gate"
 publish = false
+
+[workspace]
 
 [dependencies]
 sha2 = "=0.10.9"

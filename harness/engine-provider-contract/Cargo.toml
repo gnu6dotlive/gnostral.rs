@@ -2,6 +2,11 @@
 name = "gnostral-engine-provider-contract"
 version = "0.0.1"
 edition = "2021"
+rust-version = "1.94"
+license = "MIT"
+description = "Executable reference model for the gnostral.rs EngineProvider authority boundary"
 publish = false
+
+[workspace]
 
 [dependencies]
