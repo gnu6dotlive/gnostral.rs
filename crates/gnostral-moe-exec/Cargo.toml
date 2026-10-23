@@ -1,0 +1,12 @@
+[package]
+name = "gnostral-moe-exec"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.94"
+license = "MIT"
+description = "Deterministic route partitioning and grouped MoE dispatch planning for the gnostral.rs engine"
+publish = false
+
+[workspace]
+
+[dependencies]
