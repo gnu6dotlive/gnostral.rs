@@ -3,9 +3,8 @@
 use gnostral_engine_provider_contract::v1::*;
 use gnostral_engine_provider_contract::{
     DeclaredCapability, EngineIdentity, EngineProvider, EngineTransport, Fact, GenerationReceipt,
-    GenerationRequest, InstanceState, ModelArtifact, ModelHandle, QualifiedCapability,
-    QualificationStatus, ReadinessLevel, RuntimeObservation,
-    SemanticProbeReceipt, UnloadReceipt,
+    GenerationRequest, InstanceState, ModelArtifact, ModelHandle, QualificationStatus,
+    QualifiedCapability, ReadinessLevel, RuntimeObservation, SemanticProbeReceipt, UnloadReceipt,
 };
 
 const SHA: &str = "64eec222ccefff4cd4c0067bd83348f1d22eebda27d0d857e352ee090cf19723";
@@ -90,7 +89,11 @@ fn select_uses_qualified_not_declared_capabilities() {
     assert!(receipt
         .rejected
         .iter()
-        .any(|(id, reason)| id.0 == "declared" && matches!(reason, SelectionRejection::Capabilities(Negotiation::Unknown(_)))));
+        .any(|(id, reason)| id.0 == "declared"
+            && matches!(
+                reason,
+                SelectionRejection::Capabilities(Negotiation::Unknown(_))
+            )));
 }
 
 #[test]
@@ -115,7 +118,11 @@ fn negotiation_is_typed_and_numeric() {
     assert!(matches!(unsatisfied, Negotiation::Unsatisfied(_)));
 
     let conflict = negotiate(
-        &entry(std::string::String::new().as_str(), "prof", vec![qualified(CapabilityKey::MaxContextTokens, "4096 tokens")]),
+        &entry(
+            std::string::String::new().as_str(),
+            "prof",
+            vec![qualified(CapabilityKey::MaxContextTokens, "4096 tokens")],
+        ),
         &[CapabilityRequirement::new(CapabilityKey::MaxContextTokens)
             .at_least(CapabilityValue::UInt(1))],
     );
@@ -127,10 +134,12 @@ fn unknown_is_a_distinct_deny_state() {
     let entry = entry("p", "prof", Vec::new());
     let outcome = negotiate(
         &entry,
-        &[CapabilityRequirement::new(CapabilityKey::Streaming)
-            .exact(CapabilityValue::Bool(true))],
+        &[CapabilityRequirement::new(CapabilityKey::Streaming).exact(CapabilityValue::Bool(true))],
     );
-    assert_eq!(outcome, Negotiation::Unknown(vec![CapabilityKey::Streaming]));
+    assert_eq!(
+        outcome,
+        Negotiation::Unknown(vec![CapabilityKey::Streaming])
+    );
     assert!(!outcome.satisfied());
 }
 
@@ -185,7 +194,10 @@ fn registry_rejects_duplicate_and_empty_ids() {
         Err(RegistryError::DuplicateProviderId(ProviderId("x".into())))
     );
     let empty = entry("", "p", Vec::new());
-    assert_eq!(registry.register(empty), Err(RegistryError::EmptyProviderId));
+    assert_eq!(
+        registry.register(empty),
+        Err(RegistryError::EmptyProviderId)
+    );
 }
 
 #[test]
@@ -197,11 +209,7 @@ fn error_taxonomy_has_no_other_and_explicit_retryability() {
         .collect();
     assert_eq!(labels.len(), 13);
     assert!(!labels.contains("other"));
-    let error = ProviderError::new(
-        ProviderErrorKind::TransportFault,
-        "socket closed",
-        true,
-    );
+    let error = ProviderError::new(ProviderErrorKind::TransportFault, "socket closed", true);
     assert_eq!(error.kind, ProviderErrorKind::TransportFault);
     assert!(error.retryable);
     assert!(error.retry_after_ms.is_unknown());
@@ -470,10 +478,7 @@ fn streaming_start_poll_cancel_contract() {
     assert_eq!(id, RequestId(7));
     assert_eq!(sink.events.len(), 2);
     assert!(validate_stream_events(&sink.events).is_ok());
-    assert_eq!(
-        provider.poll(id).unwrap(),
-        PollOutcome::Finished(receipt())
-    );
+    assert_eq!(provider.poll(id).unwrap(), PollOutcome::Finished(receipt()));
     provider.cancel(RequestId(99)).unwrap();
 }
 
@@ -481,7 +486,15 @@ fn streaming_start_poll_cancel_contract() {
 fn conformance_passes_a_well_behaved_provider_and_fails_an_anonymous_one() {
     let mut good = MockProvider::new();
     let report = provider_conformance(&mut good);
-    assert!(report.passed, "{:?}", report.checks.iter().filter(|c| !c.passed).collect::<Vec<_>>());
+    assert!(
+        report.passed,
+        "{:?}",
+        report
+            .checks
+            .iter()
+            .filter(|c| !c.passed)
+            .collect::<Vec<_>>()
+    );
     assert_eq!(report.checks.len(), 7);
 
     struct Anonymous;
@@ -530,8 +543,7 @@ fn conformance_passes_a_well_behaved_provider_and_fails_an_anonymous_one() {
             &mut self,
             _handle: &ModelHandle,
             _request: GenerationRequest,
-        ) -> Result<GenerationReceipt, gnostral_engine_provider_contract::ProviderError>
-        {
+        ) -> Result<GenerationReceipt, gnostral_engine_provider_contract::ProviderError> {
             Err(gnostral_engine_provider_contract::ProviderError {
                 message: "unused".into(),
             })
@@ -539,8 +551,7 @@ fn conformance_passes_a_well_behaved_provider_and_fails_an_anonymous_one() {
         fn observe(
             &self,
             _handle: &ModelHandle,
-        ) -> Result<RuntimeObservation, gnostral_engine_provider_contract::ProviderError>
-        {
+        ) -> Result<RuntimeObservation, gnostral_engine_provider_contract::ProviderError> {
             Err(gnostral_engine_provider_contract::ProviderError {
                 message: "unused".into(),
             })
@@ -554,8 +565,7 @@ fn conformance_passes_a_well_behaved_provider_and_fails_an_anonymous_one() {
         fn unload(
             &mut self,
             _handle: &ModelHandle,
-        ) -> Result<UnloadReceipt, gnostral_engine_provider_contract::ProviderError>
-        {
+        ) -> Result<UnloadReceipt, gnostral_engine_provider_contract::ProviderError> {
             Err(gnostral_engine_provider_contract::ProviderError {
                 message: "unused".into(),
             })

@@ -9,11 +9,28 @@ pub mod v1;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Fact<T> {
-    Unknown { reason: String },
-    Declared { value: T, source: String },
-    EngineReported { value: T, source: String, observed_at_ms: u64 },
-    HostObserved { value: T, source: String, observed_at_ms: u64 },
-    Derived { value: T, method: String, observed_at_ms: u64 },
+    Unknown {
+        reason: String,
+    },
+    Declared {
+        value: T,
+        source: String,
+    },
+    EngineReported {
+        value: T,
+        source: String,
+        observed_at_ms: u64,
+    },
+    HostObserved {
+        value: T,
+        source: String,
+        observed_at_ms: u64,
+    },
+    Derived {
+        value: T,
+        method: String,
+        observed_at_ms: u64,
+    },
 }
 
 impl<T> Fact<T> {

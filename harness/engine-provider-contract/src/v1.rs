@@ -629,7 +629,10 @@ pub fn provider_conformance<P: EngineProvider>(provider: &mut P) -> ConformanceR
         "a missing observation must not become a default",
     ));
 
-    let labels: Vec<&str> = ProviderErrorKind::ALL.iter().map(|kind| kind.label()).collect();
+    let labels: Vec<&str> = ProviderErrorKind::ALL
+        .iter()
+        .map(|kind| kind.label())
+        .collect();
     let unique = labels
         .iter()
         .collect::<std::collections::BTreeSet<_>>()
@@ -690,8 +693,8 @@ pub fn provider_conformance<P: EngineProvider>(provider: &mut P) -> ConformanceR
         declared: Vec::new(),
         enabled: true,
     };
-    let duplicate_rejected = registry.register(entry.clone()).is_ok()
-        && registry.register(entry).is_err();
+    let duplicate_rejected =
+        registry.register(entry.clone()).is_ok() && registry.register(entry).is_err();
     checks.push(ConformanceCheck::new(
         "registry_rejects_duplicate_ids",
         duplicate_rejected,
