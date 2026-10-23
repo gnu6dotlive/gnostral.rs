@@ -1,0 +1,13 @@
+[package]
+name = "gnostral-supervisor"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.94"
+license = "MIT"
+description = "Q-040 multi-engine supervisor over the EngineProvider v1 draft: per-engine qualification, deny-UNKNOWN admission, exclusive GPU switching, lifecycle enforcement, crash isolation, streaming and cancel"
+publish = false
+
+[workspace]
+
+[dependencies]
+gnostral-engine-provider-contract = { path = "../../harness/engine-provider-contract" }
