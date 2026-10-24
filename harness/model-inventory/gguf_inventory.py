@@ -72,6 +72,10 @@ VALUE_FORMATS = {0: "B", 1: "b", 2: "H", 3: "h", 4: "I", 5: "i", 6: "f", 7: "?",
 T_STRING, T_ARRAY = 8, 9
 ARRAY_KEEP = 64
 DEFAULT_ALIGN = 32
+# In the Qwen3-Next family `attn_qkv` and `attn_gate` are Gated DeltaNet input projections
+# (gguf/normal_bindings.rs bind_qwen3_next), not attention.
+GDN_ARCHS = {"qwen3next", "qwen35", "qwen35moe"}
+GDN_PROJECTION = re.compile(r"\.attn_(qkv|gate)\.")
 ROUTED = re.compile(r"^blk\.(\d+)\.ffn_(gate|up|down|gate_up)_exps\.")
 CLASSES = [
     ("routed_experts", re.compile(r"_exps\.")),
@@ -180,7 +184,9 @@ def check_layout(shard: str, tensors: list[dict], data_bytes: int) -> None:
             raise InventoryError(f"{shard}: {cur['name']} {what}")
 
 
-def tensor_class(name: str) -> str:
+def tensor_class(name: str, arch: str | None = None) -> str:
+    if arch in GDN_ARCHS and GDN_PROJECTION.search(name):
+        return "linear_attention_or_ssm"
     for label, pattern in CLASSES:
         if pattern.search(name):
             return label
@@ -216,7 +222,7 @@ def inventory(paths: list[Path]) -> dict:
     unknown_types = set()
     for t in tensors:
         name = GGML_TYPES.get(t["type"], (f"type{t['type']}",))[0]
-        cell = by_class[tensor_class(t["name"])][name]
+        cell = by_class[tensor_class(t["name"], arch)][name]
         cell["tensors"] += 1
         cell["bytes"] += t["bytes"] or 0
         if t["bytes"] is None:

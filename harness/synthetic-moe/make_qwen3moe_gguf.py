@@ -106,6 +106,21 @@ class Writer:
         path.write_bytes(bytes(out))
 
 
+def write_tokenizer(w: Writer, tokens: list[str]) -> None:
+    vocab = len(tokens)
+    w.string("tokenizer.ggml.model", "gpt2")
+    w.string("tokenizer.ggml.pre", "qwen2")
+    w.strings("tokenizer.ggml.tokens", tokens)
+    # GPT-2 byte-level tokens are NORMAL (1); BYTE (6) means SentencePiece "<0xXX>" tokens, which
+    # llama.cpp parses and rejects here. CONTROL (3) for the two chat specials.
+    w.i32s("tokenizer.ggml.token_type", [1] * 256 + [3, 3])
+    w.strings("tokenizer.ggml.merges", [])
+    w.u32("tokenizer.ggml.eos_token_id", vocab - 1)
+    w.u32("tokenizer.ggml.padding_token_id", vocab - 1)
+    w.boolean("tokenizer.ggml.add_bos_token", False)
+    w.string("tokenizer.chat_template", CHAT_TEMPLATE)
+
+
 def f32_tensor(rng: random.Random, n: int, std: float, const: float | None = None) -> bytes:
     if const is not None:
         return array.array("f", [const] * n).tobytes()
@@ -157,17 +172,7 @@ def build(args: argparse.Namespace) -> dict:
     w.f32(f"{arch}.attention.layer_norm_rms_epsilon", 1e-6)
     w.f32(f"{arch}.rope.freq_base", 1_000_000.0)
     w.boolean(f"{arch}.expert_weights_norm", True)
-    w.string("tokenizer.ggml.model", "gpt2")
-    w.string("tokenizer.ggml.pre", "qwen2")
-    w.strings("tokenizer.ggml.tokens", tokens)
-    # GPT-2 byte-level tokens are NORMAL (1); BYTE (6) means SentencePiece "<0xXX>" tokens, which
-    # llama.cpp parses and rejects here. CONTROL (3) for the two chat specials.
-    w.i32s("tokenizer.ggml.token_type", [1] * 256 + [3, 3])
-    w.strings("tokenizer.ggml.merges", [])
-    w.u32("tokenizer.ggml.eos_token_id", vocab - 1)
-    w.u32("tokenizer.ggml.padding_token_id", vocab - 1)
-    w.boolean("tokenizer.ggml.add_bos_token", False)
-    w.string("tokenizer.chat_template", CHAT_TEMPLATE)
+    write_tokenizer(w, tokens)
 
     w.tensor("token_embd.weight", [vocab, h], GGML_F32, f32_tensor(rng, vocab * h, 0.5))
     for i in range(layers):

@@ -1,0 +1,231 @@
+From b7ca929a5de1db4c41b2c3b6e0656b41fad36cd0 Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Sat, 24 Oct 2026 18:01:04 +0000
+Subject: [PATCH] feat(capture): gnostral_prefill_check, decode-path versus
+ prefill-path self-consistency
+
+For every prompt of a capture and every step i < K, one full prefill of the
+chat-templated prompt plus the first i captured tokens gives the
+distribution of token i; a correct engine predicts the same token as the
+incremental decode that produced the capture. Raw-logits CompletionTokens
+requests with max_len 1 (the engine refuses 0).
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_016D4Xz7aLLGu873oZNF6vk4
+---
+ mistralrs/Cargo.toml                          |   4 +
+ .../examples/gnostral_prefill_check/main.rs   | 187 ++++++++++++++++++
+ 2 files changed, 191 insertions(+)
+ create mode 100644 mistralrs/examples/gnostral_prefill_check/main.rs
+
+diff --git a/mistralrs/Cargo.toml b/mistralrs/Cargo.toml
+index e7f0f32..b6c86c4 100644
+--- a/mistralrs/Cargo.toml
++++ b/mistralrs/Cargo.toml
+@@ -61,6 +61,10 @@ path = "examples/getting_started/gguf_locally/main.rs"
+ name = "gnostral_capture"
+ path = "examples/gnostral_capture/main.rs"
+ 
++[[example]]
++name = "gnostral_prefill_check"
++path = "examples/gnostral_prefill_check/main.rs"
++
+ [[example]]
+ name = "embedding"
+ path = "examples/getting_started/embedding/main.rs"
+diff --git a/mistralrs/examples/gnostral_prefill_check/main.rs b/mistralrs/examples/gnostral_prefill_check/main.rs
+new file mode 100644
+index 0000000..a3a3e55
+--- /dev/null
++++ b/mistralrs/examples/gnostral_prefill_check/main.rs
+@@ -0,0 +1,187 @@
++//! Self-consistency of the incremental decode path for the gnostral parity work.
++//!
++//! Run with:
++//! `cargo run --release --example gnostral_prefill_check -p mistralrs -- \
++//!   --model-dir DIR --file MODEL.gguf --manifest PROMPTS.json --capture CAPTURE.json --steps K --out OUT.json [--cpu]`
++//!
++//! For every prompt of a `gnostral.quality.capture/1` document and every step i < K, one full prefill of the
++//! chat-templated prompt plus the first i captured tokens gives the distribution of token i. A correct
++//! engine predicts the same token on this path as on the incremental decode path that produced the
++//! capture. The tool writes, per step, the captured (decode) token, the prefill argmax and its top-2.
++
++use anyhow::{bail, Context, Result};
++use either::Either;
++use mistralrs::{
++    Constraint, DType, Device, GgufModelBuilder, NormalRequest, Request, RequestMessage,
++    ResponseOk, SamplingParams, TextMessageRole, TextMessages,
++};
++use serde_json::{json, Value};
++use tokio::sync::mpsc::channel;
++
++struct Args {
++    model_dir: String,
++    file: String,
++    manifest: String,
++    capture: String,
++    steps: usize,
++    out: String,
++    cpu: bool,
++}
++
++fn parse() -> Result<Args> {
++    let mut map = std::collections::HashMap::new();
++    let mut cpu = false;
++    let mut it = std::env::args().skip(1);
++    while let Some(flag) = it.next() {
++        if flag == "--cpu" {
++            cpu = true;
++            continue;
++        }
++        let value = it.next().with_context(|| format!("{flag} needs a value"))?;
++        map.insert(flag, value);
++    }
++    let mut take = |k: &str| map.remove(k).with_context(|| format!("missing {k}"));
++    Ok(Args {
++        model_dir: take("--model-dir")?,
++        file: take("--file")?,
++        manifest: take("--manifest")?,
++        capture: take("--capture")?,
++        steps: take("--steps")?.parse()?,
++        out: take("--out")?,
++        cpu,
++    })
++}
++
++/// Logits of the last position after one prefill of `tokens`, with no generation.
++async fn last_logits(runner: &mistralrs::MistralRs, tokens: Vec<u32>) -> Result<Vec<f32>> {
++    let (tx, mut rx) = channel(1);
++    let request = Request::Normal(Box::new(NormalRequest {
++        messages: RequestMessage::CompletionTokens(tokens),
++        sampling_params: SamplingParams {
++            // the raw-logits response carries the prefill logits; the engine refuses max_len 0
++            max_len: Some(1),
++            ..SamplingParams::deterministic()
++        },
++        seed: None,
++        response: tx,
++        return_logprobs: false,
++        is_streaming: false,
++        id: 0,
++        queued_at: None,
++        constraint: Constraint::None,
++        suffix: None,
++        tools: None,
++        tool_choice: None,
++        logits_processors: None,
++        return_raw_logits: true,
++        web_search_options: None,
++        enable_code_execution: false,
++        enable_shell: false,
++        shell_options: None,
++        code_execution_permission: None,
++        code_execution_approval_notifier: None,
++        agent_permission: None,
++        agent_approval_handler: None,
++        agent_approval_notifier: None,
++        max_tool_rounds: None,
++        tool_dispatch_url: None,
++        model_id: None,
++        adapter: None,
++        truncate_sequence: false,
++        session_id: None,
++        files: None,
++        input_files: Vec::new(),
++    }));
++    runner.get_sender(None)?.send(request).await?;
++    let ResponseOk::Raw { logits_chunks, .. } = rx
++        .recv()
++        .await
++        .context("response channel closed")?
++        .as_result()?
++    else {
++        bail!("unexpected response type");
++    };
++    let last = logits_chunks.last().context("no logits")?;
++    let last = last.to_device(&Device::Cpu)?.to_dtype(DType::F32)?;
++    let rows = last.dims()[0];
++    Ok(last.get(rows - 1)?.to_vec1::<f32>()?)
++}
++
++fn log_softmax_top2(logits: &[f32]) -> (u32, Vec<Value>) {
++    let max = logits.iter().copied().fold(f32::NEG_INFINITY, f32::max);
++    let lse = max as f64
++        + logits
++            .iter()
++            .map(|&l| ((l - max) as f64).exp())
++            .sum::<f64>()
++            .ln();
++    let mut order: Vec<usize> = (0..logits.len()).collect();
++    order.sort_by(|&a, &b| logits[b].total_cmp(&logits[a]).then(a.cmp(&b)));
++    let top: Vec<Value> = order[..2]
++        .iter()
++        .map(|&i| json!([i, logits[i] as f64 - lse]))
++        .collect();
++    (order[0] as u32, top)
++}
++
++#[tokio::main]
++async fn main() -> Result<()> {
++    let args = parse()?;
++    let manifest: Value = serde_json::from_str(&std::fs::read_to_string(&args.manifest)?)?;
++    let capture: Value = serde_json::from_str(&std::fs::read_to_string(&args.capture)?)?;
++    let generated: std::collections::HashMap<String, Vec<u32>> = capture["captures"]
++        .as_array()
++        .context("capture has no captures")?
++        .iter()
++        .map(|c| {
++            let ids = c["token_ids"]
++                .as_array()
++                .map(|a| {
++                    a.iter()
++                        .filter_map(|t| t.as_u64().map(|t| t as u32))
++                        .collect()
++                })
++                .unwrap_or_default();
++            (c["prompt_id"].as_str().unwrap_or_default().to_owned(), ids)
++        })
++        .collect();
++
++    let mut builder = GgufModelBuilder::new(&args.model_dir, vec![args.file.clone()])
++        .with_logging()
++        .with_prefix_cache_n(None);
++    if args.cpu {
++        builder = builder.with_force_cpu();
++    }
++    let model = builder.build().await?;
++
++    let mut results = Vec::new();
++    for prompt in manifest["prompts"]
++        .as_array()
++        .context("manifest has no prompts")?
++    {
++        let id = prompt["id"].as_str().context("prompt id")?;
++        let text = prompt["text"].as_str().context("prompt text")?;
++        let gen = generated
++            .get(id)
++            .with_context(|| format!("prompt {id} not in capture"))?;
++        let messages = TextMessages::new().add_message(TextMessageRole::User, text);
++        let prompt_ids = model
++            .tokenize(Either::Left(messages), None, true, true, None)
++            .await?;
++        let mut rows = Vec::new();
++        for step in 0..args.steps.min(gen.len()) {
++            let tokens = [prompt_ids.clone(), gen[..step].to_vec()].concat();
++            let logits = last_logits(model.inner(), tokens).await?;
++            let (argmax, top2) = log_softmax_top2(&logits);
++            rows.push(json!({
++                "step": step,
++                "decode_token": gen[step],
++                "prefill_token": argmax,
++                "prefill_top2": top2,
++            }));
++        }
++        results.push(json!({"prompt_id": id, "prompt_tokens": prompt_ids.len(), "rows": rows}));
++    }
++    std::fs::write(&args.out, serde_json::to_string_pretty(&results)?)?;
++    Ok(())
++}
+-- 
+2.43.0
+

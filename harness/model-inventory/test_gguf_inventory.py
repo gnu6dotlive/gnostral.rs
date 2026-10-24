@@ -88,6 +88,10 @@ class InventoryTests(unittest.TestCase):
                           ("blk.3.attn_norm.weight", "norms"), ("blk.3.attn_qkv.weight", "attention"),
                           ("blk.3.ffn_up_shexp.weight", "shared_experts"), ("output.weight", "embeddings_and_output")]:
             self.assertEqual(inv.tensor_class(name), cls, name)
+        self.assertEqual(inv.tensor_class("blk.0.attn_qkv.weight", "qwen35moe"), "linear_attention_or_ssm")
+        self.assertEqual(inv.tensor_class("blk.0.attn_gate.weight", "qwen3next"), "linear_attention_or_ssm")
+        self.assertEqual(inv.tensor_class("blk.0.attn_qkv.weight", "phi3"), "attention")
+        self.assertEqual(inv.tensor_class("blk.3.attn_q.weight", "qwen35moe"), "attention")
 
     def test_iq4_xs_experts_are_refused_at_load(self) -> None:
         expert_model(self.tmp / "m.gguf", "qwen35moe", IQ4_XS, IQ4_XS)
