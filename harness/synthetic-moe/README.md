@@ -25,3 +25,13 @@ GPU comparison without `NO_XID`.
 What this proves and what it does not: see
 [`evidence/runs/synthetic-moe-e2e-20261023.json`](../../evidence/runs/synthetic-moe-e2e-20261023.json).
 The model is noise; no timing it produces is engine performance, and no quality claim follows.
+
+## Device run (`--device cuda`)
+
+Two configurations are run and kept apart in `e2e-receipt.json`: `cpu-experts` (budget of one byte, empty
+profile) and `mixed-experts` (a recording pass with `GNOSTRAL_EXPERT_PROFILE_OUT`, then
+`--mixed-fraction` of the expert bytes as `GNOSTRAL_EXPERT_CACHE_BYTES`). Size the model with
+`--hidden/--layers/--experts/--moe-inter`. Each lane samples `nvidia-smi` every 200 ms, reports
+`vram_used_mib` (whole-card peak) and a `GNOSTRAL_DEVICE` line, and **fails** if the capture pid never
+shows up as a compute app. Without `nvidia-smi` the values stay `UNKNOWN`. Lane verdicts compare full
+ranges: overlapping min/max is "inconclusive", never a ranking.
