@@ -24,6 +24,18 @@ if ! grep -q '35.2 tok/s' README.md; then
   fail=1
 fi
 
+# Personal home-directory paths: the repository is public. Files committed before the rule are listed
+# in scripts/home-path-allowlist.txt; everything else must go through scripts/scrub_home_paths.py.
+home_leaks="$(git grep -lE '/(home|Users)/[A-Za-z0-9_.-]+/' -- . || true)"
+if [[ -n "$home_leaks" ]]; then
+  new_home_leaks="$(grep -vxF -f <(grep -v '^#' scripts/home-path-allowlist.txt) <<<"$home_leaks" || true)"
+  if [[ -n "$new_home_leaks" ]]; then
+    echo "$new_home_leaks"
+    echo "ERROR: personal home path in tracked files; run scripts/scrub_home_paths.py on them" >&2
+    fail=1
+  fi
+fi
+
 if ! python3 scripts/check-doc-links.py; then
   echo "ERROR: active public documentation links/status index failed" >&2
   fail=1

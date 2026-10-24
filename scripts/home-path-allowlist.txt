@@ -1,0 +1,30 @@
+# Tracked files that held a personal home path before scripts/scrub_home_paths.py existed.
+# check-public.sh exempts exactly these; any other file with such a path fails. Do not add to this list:
+# scrub the new file instead.
+evidence/runs/m1-nsys-20261024/run.stdout
+evidence/runs/m1-profile-20261024/gnostral.stdout
+evidence/runs/m1-profile-20261024/per-route.stdout
+evidence/runs/m1-profile-20261024/trace-per-route.json
+evidence/runs/m1-qwen3-30b-cpu-experts-v3-20261024/bench-cpu-experts/receipts/gnostral.json
+evidence/runs/m1-qwen3-30b-cpu-experts-v3-20261024/bench-cpu-experts/receipts/grouped.json
+evidence/runs/m1-qwen3-30b-cpu-experts-v3-20261024/bench-cpu-experts/receipts/per-route.json
+evidence/runs/m1-qwen3-30b-cpu-experts-v3-20261024/e2e-receipt.json
+evidence/runs/m1-qwen3-30b-cpu-experts-v3-20261024/plan-cpu-experts.json
+evidence/runs/m1-qwen3-30b-mixed-20261024/bench-mixed-experts/receipts/gnostral.json
+evidence/runs/m1-qwen3-30b-mixed-20261024/bench-mixed-experts/receipts/grouped.json
+evidence/runs/m1-qwen3-30b-mixed-20261024/bench-mixed-experts/receipts/per-route.json
+evidence/runs/m1-qwen3-30b-mixed-20261024/e2e-receipt.json
+evidence/runs/m1-qwen3-30b-mixed-20261024/plan-mixed-experts.json
+evidence/runs/m1-repro-diag3-20261024/A-ballast/A-1.stdout.txt
+evidence/runs/m1-repro-diag3-20261024/A-ballast/A-2.stdout.txt
+evidence/runs/m1-repro-diag3-20261024/A-plain/A-1.stdout.txt
+evidence/runs/m1-repro-diag3-20261024/A-plain/A-2.stdout.txt
+evidence/runs/m1-repro-diag3-20261024/probe-0007.stdout.txt
+evidence/runs/m1-repro-diag3-20261024/probe.stdout.txt
+evidence/runs/synthetic-moe-e2e-gpu-20261023.json
+evidence/runs/synthetic-moe-four-lane-cpu-20261024/bench-cpu-experts/receipts/gnostral.json
+evidence/runs/synthetic-moe-four-lane-cpu-20261024/bench-cpu-experts/receipts/grouped.json
+evidence/runs/synthetic-moe-four-lane-cpu-20261024/bench-cpu-experts/receipts/per-route.json
+evidence/runs/synthetic-moe-four-lane-cpu-20261024/plan-cpu-experts.json
+harness/experiments/q010_hotpath_ab_audit_20261010.py
+harness/experiments/q010_hotpath_ab_retest_20261010.py

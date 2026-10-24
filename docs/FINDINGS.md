@@ -359,6 +359,7 @@ Rules:
 - **Hypothesis to test, not a conclusion:** per-step allocation or dequantisation in the qwen35moe expert
   or Gated DeltaNet path. It matters for the port: residency on top of this path should wait for its
   profile.
+- **Cause located in F-036:** the x86 MoE fallback dequantises every expert at every step.
 
 ### F-031 · 2026-10-24 · On the lab, 0007 places all 48 layers on the card, and the placement holds under pressure
 
@@ -451,6 +452,54 @@ Rules:
   repeat would serve GPUs flash-attn does not support.
 - **Evidence:** `evidence/runs/m1-sdpa-sync-ab-20261024/`, `evidence/runs/m1-nsys-20261024/` (capture
   only), `vendor/mistralrs-strata/mistralrs-core/src/attention/mod.rs`.
+
+### F-036 · 2026-10-24 · On x86 the plain MoE path dequantises every expert, every step
+
+- **Class:** the cause is SUPPORTED (source, sampled stacks, scaling with total experts, an allocator
+  A/B); the numbers are OBSERVED on the cloud VM with the qwen35moe fixtures, 2 to 4 interleaved runs
+  each, captures byte-identical across runs; what it means for real models is INFERRED.
+- **Source:** `qtensor_indexed_moe_forward` (`mistralrs-quant/src/gguf/cpu.rs`) first asks candle's
+  `QTensor::indexed_gemv`. In candle `35d7ae7` that function is implemented for `aarch64` only and
+  returns `None` elsewhere; our build shim does not touch it. The fallback dequantises the whole
+  `[n_experts, n, k]` tensor to F32, then `gather_forward` copies one expert matrix per (token, top-k)
+  pair with `index_select` before the matmul. Every GGUF MoE model that reaches the shared experts layer
+  on an x86 CPU without residency takes this path, not only qwen35moe.
+- **Stacks:** 45 gdb samples during the 16-expert k-quant run: of 43 running stacks, 15 are `memcpy`
+  under `index_select` and 13 are `to_float` under `dequantize`, both inside `cpu_indexed_moe_forward`.
+- **Scaling (same top-4, same 4 prompts x 32 tokens):**
+
+  | Experts, type | Decode tok/s | TTFT ms | System s | Minor faults |
+  | --- | --- | --- | --- | --- |
+  | 16, Q2_K/Q3_K | 25.6-26.2 | 1778-1846 | 5.0-5.1 | 2.57 M |
+  | 64, Q2_K/Q3_K | 3.9-4.2 | 2050-2353 | 20.9-22.8 | 15.25 M |
+  | 16, F32 | 108-116 | 1866-1990 | 5.6-5.9 | 2.59 M |
+
+  Four times the experts with the same four active cost 6.4 times the decode time. F32 experts, whose
+  dequantisation is a copy, decode four times faster than k-quant ones.
+- **Allocator A/B (diagnostic):** with glibc told never to use `mmap` and never to trim, system time
+  falls from 21 s to about 1 s, faults from 15.25 M to under 0.15 M, the 64-expert decode goes from
+  4.1 to 7.8 tok/s and TTFT halves at both sizes (1.8 to 0.9 s at 16 experts). The 16-expert decode
+  does not move (25.7 to 24.9 tok/s). Captures are byte-identical with and without. A 64-expert
+  dequantised tensor is exactly 32 MiB, glibc's ceiling for serving a request from the heap, so each
+  step maps and unmaps it again: one prompt of 8 tokens makes 224 `mmap` and 152 `munmap` calls at 64
+  experts against 106 and 45 at 16. 128 forward passes x 12 tensors x 8192 pages is 12.6 M faults,
+  the measured difference.
+- **Decomposition:** the two independent estimates of the dequantisation cost agree at about 1.17 ns
+  per weight on this VM (k-quant against F32 at 16 experts; 16 against 64 experts with the allocator
+  tuned). At 16 experts decode is mostly dequantisation; prefill is mostly page faults from the
+  per-token copies.
+- **What it means (INFERRED):** at the Qwen3-30B-A3B geometry (128 experts, hidden 2048, expert width
+  768, 48 layers) this path would dequantise 29 G weights per decoded token, tens of seconds per token
+  at this VM's rate, before any fault cost. The plain engine path is not a usable CPU-experts baseline
+  for any real MoE on x86. The M1 lanes are not affected: residency routes qwen3moe experts through
+  its own executors.
+- **UNKNOWN:** whether the lab's private candle-strata (`f0f334aa`) implements `indexed_gemv` on x86.
+  The lab can read it in one command.
+- **Consequence:** tuning the allocator is not the fix. Either the fallback stops dequantising experts
+  no token selected (dequantise the selected ones only and group tokens per expert, which can stay
+  bit-identical to today's output), or qwen35moe experts go through residency, which bypasses the
+  fallback. F-030's comparison against llama.cpp measured this fallback, not the model.
+- **Evidence:** `evidence/runs/qwen35moe-cpu-moe-fallback-20261024/summary.json` and receipts.
 
 ## Evidence not yet in the repository
 

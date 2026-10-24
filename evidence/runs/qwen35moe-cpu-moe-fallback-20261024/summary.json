@@ -1,0 +1,192 @@
+{
+  "schema": "gnostral.evidence.summary/1",
+  "run": "qwen35moe-cpu-moe-fallback-20261024",
+  "finding": "F-036 (follows F-030)",
+  "host": {
+    "kind": "cloud VM, not the lab host",
+    "cpu": "Intel Xeon @ 2.10GHz, 4 vCPU, AVX-512",
+    "libc": "glibc 2.39 (Ubuntu)",
+    "allocator": "system malloc (the capture example sets no global allocator)"
+  },
+  "binary": {
+    "example": "gnostral_capture",
+    "engine_tree": "vendor/mistralrs-strata b7ca929 (patches 0001-0010 on e68287e), CPU features",
+    "candle": "vendor/candle-strata 5de22c4 = upstream 35d7ae7 + public build shim",
+    "sha256": "527c9c216873b5b5628b5762dbae2a459155825bdab73acf16e67be8d3ee7bfe"
+  },
+  "fixtures": {
+    "kq": {
+      "generator": "harness/synthetic-moe/make_qwen35moe_gguf.py (defaults: 16 experts, top-4, hidden 512, moe_inter 256, 4 layers, Q2_K gate/up + Q3_K down)",
+      "sha256": "75410a529bf491e440a01696118b9ed8c1b6be66e3cfd20af753769a4058d8ec"
+    },
+    "kq64": {
+      "generator": "same, --experts 64",
+      "sha256": "ee5affedd7a034815e9a61adc034ef6e31068640fe77b3536675fde841322fdc"
+    },
+    "f32": {
+      "generator": "same, --expert-type f32",
+      "sha256": "a807f9ae97cc9842b5fd29090dbf4e94403bcd25b698ba6e4e84b3b9ab42ba6f"
+    }
+  },
+  "protocol": {
+    "prompts": "harness/quality/prompts/quality-prompts-32-20261023.json, --only q01-capital,q05-rust-fn,q10-fr-explain,q19-summary-tech",
+    "max_tokens": 32,
+    "flags": "--engine plain --cpu --no-prefix-cache, greedy",
+    "measure": "tools/rusage.py wraps one capture process: RUSAGE_CHILDREN plus the GNOSTRAL_METRICS line",
+    "order": "interleaved: scaling run kq, kq64, f32 x2; A/B kq64 default, kq64 tuned, kq default, kq tuned x2"
+  },
+  "malloc_tuned": "GLIBC_TUNABLES=glibc.malloc.mmap_max=0:glibc.malloc.trim_threshold=17179869184:glibc.malloc.arena_max=1 (diagnostic, not a proposed setting)",
+  "results_default_malloc": {
+    "kq": {
+      "runs": 4,
+      "decode_tok_s": [
+        25.64,
+        26.21
+      ],
+      "ttft_ms": [
+        1778,
+        1846
+      ],
+      "sys_s": [
+        5.01,
+        5.09
+      ],
+      "user_s": [
+        7.41,
+        7.59
+      ],
+      "minor_faults": [
+        2566161,
+        2566318
+      ]
+    },
+    "kq64": {
+      "runs": 4,
+      "decode_tok_s": [
+        3.91,
+        4.17
+      ],
+      "ttft_ms": [
+        2050,
+        2353
+      ],
+      "sys_s": [
+        20.89,
+        22.76
+      ],
+      "user_s": [
+        18.39,
+        18.67
+      ],
+      "minor_faults": [
+        15251142,
+        15251266
+      ]
+    },
+    "f32": {
+      "runs": 2,
+      "decode_tok_s": [
+        108.29,
+        115.63
+      ],
+      "ttft_ms": [
+        1866,
+        1990
+      ],
+      "sys_s": [
+        5.56,
+        5.89
+      ],
+      "user_s": [
+        3.68,
+        3.72
+      ],
+      "minor_faults": [
+        2589525,
+        2589561
+      ]
+    }
+  },
+  "results_tuned_malloc": {
+    "kq": {
+      "runs": 2,
+      "decode_tok_s": [
+        24.84,
+        24.89
+      ],
+      "ttft_ms": [
+        845,
+        926
+      ],
+      "sys_s": [
+        0.6,
+        0.63
+      ],
+      "user_s": [
+        8.68,
+        8.96
+      ],
+      "minor_faults": [
+        80789,
+        80825
+      ]
+    },
+    "kq64": {
+      "runs": 2,
+      "decode_tok_s": [
+        7.78,
+        7.82
+      ],
+      "ttft_ms": [
+        935,
+        976
+      ],
+      "sys_s": [
+        0.63,
+        1.25
+      ],
+      "user_s": [
+        20.31,
+        20.39
+      ],
+      "minor_faults": [
+        93407,
+        149948
+      ]
+    }
+  },
+  "identity": {
+    "captures_run1_vs_run2": "byte-identical for kq, kq64, f32",
+    "captures_default_vs_tuned_malloc": "byte-identical for kq and kq64, both runs"
+  },
+  "strace_1_prompt_8_tokens": {
+    "kq": {
+      "mmap": 106,
+      "munmap": 45,
+      "brk": 211
+    },
+    "kq64": {
+      "mmap": 224,
+      "munmap": 152,
+      "brk": 205
+    }
+  },
+  "pmp": {
+    "workload": "kq fixture, the same 4 prompts x 32 tokens, default malloc",
+    "samples": 45,
+    "period_s": 0.2,
+    "raw_sha256": "de7d278cec1e3d6a2a3be04b5dfe17ab887d8013bcc18f0fdc4eeda3109589de",
+    "raw_retained": false,
+    "aggregate": "pmp-kq16-aggregate.txt"
+  },
+  "source_attribution": {
+    "fallback": "mistralrs-quant/src/gguf/cpu.rs qtensor_indexed_moe_forward: try QTensor::indexed_gemv, else qtensor.dequantize(device) of the whole [n_experts, n, k] tensor and UnquantLinear::gather_forward (index_select of one expert matrix per token x top-k pair)",
+    "candle": "candle-core/src/quantized/mod.rs QTensor::indexed_gemv: implementation under cfg(target_arch = \"aarch64\"), Ok(None) otherwise; present in upstream 35d7ae7, untouched by the shim",
+    "callers": "mistralrs-core/src/moe/experts/backends.rs forward_gather (shared MoE experts layer, used by qwen3_next and other MoE models)"
+  },
+  "not_checked": [
+    "the lab's private candle-strata (f0f334aa) indexed_gemv on x86",
+    "the GDN and attention share of prefill once the copies are gone",
+    "any real model"
+  ]
+}
