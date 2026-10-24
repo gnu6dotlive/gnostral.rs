@@ -140,6 +140,7 @@ Rules:
 - **What:** `Qwen3MoELoader` sizing drops expert stacks under residency and reserves the cache
   budget once. Unit test with the Qwen3-30B-A3B geometry.
 - **Evidence:** `patches/engine-program/0007-*.patch`.
+- Superseded by F-031.
 
 ### F-014 · 2026-10-24 · The prefix cache changes the computation, deterministically
 
@@ -359,6 +360,58 @@ Rules:
   or Gated DeltaNet path. It matters for the port: residency on top of this path should wait for its
   profile.
 
+### F-031 · 2026-10-24 · On the lab, 0007 places all 48 layers on the card, and the placement holds under pressure
+
+- **Class:** OBSERVED on the lab host (RTX 3070 8 GB); supersedes F-013's INFERRED.
+- **What:** with `0001` to `0010` applied, the native GGUF path logs `Layers 0-47: cuda[0]` and reports
+  `0-47:cuda:0;nm=cuda:0`; before `0007` the same probe logged `Layers 0-15: cuda[0]`, `Layers 16-47: cpu`.
+  (The lab also reported the process VRAM peak rising from 782 to 1102 MiB; no receipt for it is in
+  the repository, so it is not evidence here.) Reproducibility matrix A, two captures of 9
+  prompts x 32 tokens: tokens differ 0/9, logprobs differ 0/9; with 1.5 GB of VRAM held by another
+  CUDA process the placement stays 48/48 and the outputs are bit-identical to the run without it.
+- **Consequence:** F-009 to F-011's placement nondeterminism is gone for this configuration; M1 can be
+  measured.
+- **Evidence:** `evidence/runs/m1-repro-diag3-20261024/` (`probe.stdout.txt` before, `probe-0007.*` after,
+  `A-plain/`, `A-ballast/`).
+
+### F-032 · 2026-10-24 · First accepted M1 comparison: our best lane at 58% of llama.cpp
+
+- **Class:** OBSERVED on the lab host, comparison accepted (`COMPARED`, driver `NO_XID`).
+- **What:** Qwen3-30B-A3B Q2_K, every expert on the CPU, 48 layers on the card, 32 prompts x 32 tokens,
+  1 warmup and 5 measured runs per lane, prefix cache off, placement pinned, each lane reproducing its
+  own warmup. Decode tok/s, median (min-max): `per-route` 10.2 (9.8-10.5), `grouped` 10.7 (10.2-10.9,
+  overlaps per-route), `gnostral` 23.6 (20.4-24.3, above), llama.cpp `--cpu-moe` 40.7 (40.0-45.1).
+  Whole-card VRAM medians 3744, 3729, 3670 and 3945 MiB. This is the first real-model measurement
+  with the Phase 3a kernels (F-024).
+- **Limits:** n = 5; the host was not isolated (a llama-server container had been running for a day and
+  the desktop uses the card); a refused first run (v2) read 8.7 and 46.2 tok/s for per-route and
+  llama.cpp, so runs differ by 10-20% on this host; ambient VRAM is `UNKNOWN` in the table. Q-025's
+  34.54 tok/s for llama.cpp came from another protocol and is not comparable with 40.7.
+- **Process:** the v2 run was refused because llama.cpp only logs `offloaded A/B layers to GPU` at
+  `-lv 4` in that build; the lane read `offloaded=none` against a pinned `49/49`. The fix was the log
+  level, added to the lane's arguments (part of its identity), not a relaxed check.
+- **Evidence:** `evidence/runs/m1-qwen3-30b-cpu-experts-v3-20261024/bench-cpu-experts/` (`bundle.json`,
+  `pareto.md`, receipts).
+
+### F-033 · 2026-10-24 · Where a gnostral decode step goes: CPU experts, then host-side work the GPU waits for
+
+- **Class:** OBSERVED (one traced request of 32 tokens, lab host); the bandwidth reading is INFERRED
+  until measured.
+- **What:** medians over the 31 decode steps of `trace-gnostral.json`: step 42.3 ms (23.7 tok/s, in
+  line with the bench's 23.6) = forward 40.1 + sampling 2.1 + gaps 0.03. Inside the forward: CPU
+  experts 21.3, host transfers 2.9, MoE bookkeeping 0.25, GPU wait 0.18, everything else 15.9. (The
+  lab's first summary used means, 44.9 ms per step; same picture.)
+- **Reading:** GPU wait near zero means the card finishes its queued work before the host reaches each
+  sync: the 15.9 ms is host-side work (op dispatch, launches, synchronisation) the GPU waits for.
+  The lab measures it with nsys next.
+- **Expert phase:** each token reads 8 experts x 48 layers x 1.71 MB = 655 MB of weights; in 21.3 ms that
+  is 30.8 GB/s. If the lab's RAM ceiling is near that, the phase is bound by memory and a faster kernel
+  barely helps; reading fewer bytes (experts cached on the card) does. `kquant_bench --mode
+  bandwidth` measures the ceiling; on the cloud VM it reads 34 GB/s at 4 threads while the grouped FFN
+  streams its weights at 12.5 GB/s, so there the kernel, not memory, is the limit.
+- **Protocol note:** sampling with logprobs (the captures need them) costs 2.1 ms per step.
+- **Evidence:** `evidence/runs/m1-profile-20261024/`.
+
 ## Evidence not yet in the repository
 
 These directories exist on the lab disk only. Until they are committed they are not program
@@ -368,4 +421,4 @@ evidence, and a disk failure would erase them.
 | --- | --- |
 | `evidence/runs/synthetic-moe-gpu-20261023/` | F-006 |
 | `evidence/runs/m1-qwen3-30b-cpu-experts-20261024/` | F-009 |
-| `evidence/runs/m1-repro-diag3-20261024/` (0006 probe log) | F-012 |
+| `evidence/runs/m1-qwen3-30b-cpu-experts-v2-20261024/` (refused run) | F-032 |
