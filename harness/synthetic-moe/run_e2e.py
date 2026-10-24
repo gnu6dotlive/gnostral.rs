@@ -20,6 +20,7 @@ Usage:
 from __future__ import annotations
 
 import argparse
+import functools
 import hashlib
 import json
 import os
@@ -45,6 +46,7 @@ DRIVER_PROBE = ("if journalctl -k -b --no-pager 2>/dev/null | grep -q 'NVRM: Xid
                 "then echo GNOSTRAL_DRIVER XID; else echo GNOSTRAL_DRIVER NO_XID; fi")
 
 
+@functools.lru_cache(maxsize=None)
 def sha256_file(path: Path) -> str:
     h = hashlib.sha256()
     with path.open("rb") as handle:
@@ -71,10 +73,14 @@ def residency_env(cfg: dict, lane: str, extra: dict[str, str] | None = None) -> 
     return env
 
 
+def model_path(args: argparse.Namespace, out: Path) -> Path:
+    return Path(args.model).resolve() if args.model else out / "synth.gguf"
+
+
 def capture_cmd(args: argparse.Namespace, out: Path, lane: str, dest: Path) -> list[str]:
-    model = out / "synth.gguf"
+    model = model_path(args, out)
     cmd = [
-        args.capture_bin, "--model-dir", str(out), "--file", model.name,
+        args.capture_bin, "--model-dir", str(model.parent), "--file", model.name,
         "--manifest", str(args.manifest), "--promptset-sha256", manifest_hash(args.manifest),
         "--engine", lane, "--binary-sha256", sha256_file(Path(args.capture_bin)),
         "--model-sha256", sha256_file(model), "--max-tokens", str(args.max_tokens),
@@ -289,6 +295,9 @@ def main() -> int:
     parser.add_argument("--max-tokens", type=int, default=32)
     parser.add_argument("--repetitions", type=int, default=3)
     parser.add_argument("--device", choices=("cpu", "cuda"), default="cpu")
+    parser.add_argument("--model", help="existing GGUF to run instead of the synthetic fixture "
+                        "(give --layers/--experts/--moe-inter/--hidden of that model)")
+    parser.add_argument("--mixed-bytes", type=int, help="explicit expert budget for the mixed configuration")
     parser.add_argument("--hidden", type=int, default=512)
     parser.add_argument("--layers", type=int, default=2)
     parser.add_argument("--experts", type=int, default=16)
@@ -305,9 +314,12 @@ def main() -> int:
 
     out = Path(args.out).resolve()
     out.mkdir(parents=True, exist_ok=True)
-    model = out / "synth.gguf"
+    model = model_path(args, out)
     summary_path = out / "synth.json"
-    if not model.exists() or not summary_path.exists():
+    if args.model:
+        summary_path.write_text(json.dumps({"path": str(model), "layers": args.layers, "experts": args.experts,
+                                            "hidden": args.hidden, "moe_inter": args.moe_inter}))
+    elif not model.exists() or not summary_path.exists():
         made = subprocess.run(
             [sys.executable, "-I", str(MAKER), "--out", str(model), "--hidden", str(args.hidden),
              "--layers", str(args.layers), "--experts", str(args.experts), "--moe-inter", str(args.moe_inter)],
@@ -330,7 +342,7 @@ def main() -> int:
         sys.stderr.write(record.stderr[-4000:])
         return record.returncode or 4
     # Configuration 2: the recorded profile with a real budget.
-    mixed_cfg = {"cache_bytes": int(expert_bytes(geometry) * args.mixed_fraction), "profile": recorded}
+    mixed_cfg = {"cache_bytes": args.mixed_bytes or int(expert_bytes(geometry) * args.mixed_fraction), "profile": recorded}
 
     blocks = [run_config(args, out, name, cfg, model, model_sha)
               for name, cfg in (("cpu-experts", cpu_cfg), ("mixed-experts", mixed_cfg))]
