@@ -6,6 +6,8 @@ Do not commit credentials or tokens, user data, private host inventory unrelated
 
 Prefer compact machine-readable summaries plus checksums for externally hosted or reproducible large artifacts.
 
+The repository is public: before `git add`, run `python3 scripts/scrub_home_paths.py evidence/runs/<new-run>/` so receipts, plans and captured output carry `~` instead of a personal home path. `scripts/check-public.sh` fails on any new tracked file that still holds one; the files committed before this rule are listed in `scripts/home-path-allowlist.txt` and left as they are.
+
 Q-012's sanitized, SHA-256-attributed [three-family functional qualification](runs/gnostral-q012-native-three-families-20261010.json) includes the negative MoE feature-omission witness, per-family bounded memory observations, and the digest of each retained private source receipt. Its raw logs and embedding vectors are intentionally not committed.
 
 Q-013-A [evidence-bound probe plans](runs/gnostral-q013-exact-probe-plans-20261010.json) are derived from the pinned Q-012 public receipt; every plan has `execution_authorized=false`. They are offline contract fixtures, not new runtime qualifications or executable access grants.
