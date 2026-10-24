@@ -1,0 +1,159 @@
+{
+ "schema": "gnostral.rs/evidence-summary/1",
+ "date": "2026-10-24",
+ "claim_class": "OBSERVED",
+ "scope": "Synthetic qwen35moe fixtures (4 layers: 3 Gated DeltaNet, 1 gated full attention; 16 routed experts top-4 plus a shared expert), CPU only, cloud container (4-core Xeon, AVX-512, AMX). Random weights: these runs judge implementations against the model's definition, not model quality or speed.",
+ "fixtures": {
+  "generator": "harness/synthetic-moe/make_qwen35moe_gguf.py (seed 20261024; regenerable, not retained)",
+  "kquant": {
+   "sha256": "75410a529bf491e440a01696118b9ed8c1b6be66e3cfd20af753769a4058d8ec",
+   "args": "default (Q2_K gate/up, Q3_K down)"
+  },
+  "f32": {
+   "sha256": "a807f9ae97cc9842b5fd29090dbf4e94403bcd25b698ba6e4e84b3b9ab42ba6f",
+   "args": "--expert-type f32"
+  },
+  "q2k_gate_up": {
+   "sha256": "02b690d1278a4855b63e618fa388bb272b6550d0d358e9eaff4709279e3697d7",
+   "args": "--expert-type q2k_gate_up"
+  },
+  "q3k_down": {
+   "sha256": "a25cd50285488d8daab7366285aa9133b3c3ec41b0b6619526d3cc0950c20e5f",
+   "args": "--expert-type q3k_down"
+  }
+ },
+ "binaries": {
+  "gnostral_capture_sha256": "527c9c216873b5b5628b5762dbae2a459155825bdab73acf16e67be8d3ee7bfe",
+  "gnostral_capture_engine": "engine tree e68287e + patches 0001-0009 + Phase 3a kernels (feat/engine-program f4ac8e6), public candle reconstruction (BUILD-ONLY); plain mistral.rs qwen35moe path (residency refuses this architecture, F-027)",
+  "gnostral_prefill_check_sha256": "7d42eeb8257bd2a5a607337378f1128bec297e71b74e23f723de848b22d66171 (patch 0010)",
+  "llama_server_sha256": "9dc65e6486656825d60598f213e6df2b4b4406cec9d92922ddcbc02b646f5b4a",
+  "llama_server_build_tree_sha256": "23e3b1c9c2d2213dbe366c18abcefe5bdbbc4bfbe1a642e1b19a36da95603039",
+  "llama_cpp": "b11857 (701fd25), CPU build, REPACK and AMX_INT8 available on this host",
+  "reference": "harness/synthetic-moe/qwen35moe_reference.py, float64, from transformers 5.20.2 modeling_qwen3_5_moe.py and llama.cpp b11857 conversion/qwen.py; expert tensors dequantised with b11857 gguf-py"
+ },
+ "prompts": "harness/quality/prompts/quality-prompts-32-20261023.json, 32 prompts x 32 greedy tokens",
+ "self_consistency": {
+  "method": "per engine, the decode-path token at step i versus one prefill of prompt plus the first i tokens, i < 6",
+  "engine": {
+   "steps": 192,
+   "decode_token_differs_from_prefill_token": 0
+  },
+  "llama_cpp": {
+   "steps": 192,
+   "decode_token_differs_from_prefill_token": 0
+  }
+ },
+ "judged_against_reference": {
+  "method": "teacher forcing on each engine's own tokens; the reference argmax at every step and the gap between the engine's top-2 logprobs and the reference's",
+  "kquant": {
+   "engine": {
+    "steps": 1024,
+    "reference_argmax_differs": 0,
+    "logprob_gap": {
+     "n": 2048,
+     "median": 3.106011937614728e-05,
+     "p99": 0.000994432692622338,
+     "max": 0.00331776893900404
+    }
+   },
+   "llama_cpp": {
+    "steps": 1024,
+    "reference_argmax_differs": 82,
+    "logprob_gap": {
+     "n": 1330,
+     "median": 0.11048914475019078,
+     "p99": 2.0631492512964495,
+     "max": 22.968277408795682
+    }
+   },
+   "llama_cpp_no_repack": {
+    "steps": 1024,
+    "reference_argmax_differs": 82,
+    "logprob_gap": {
+     "n": 1330,
+     "median": 0.10844351469054869,
+     "p99": 2.0630012529634723,
+     "max": 23.04291076870474
+    }
+   }
+  },
+  "f32": {
+   "engine": {
+    "steps": 1024,
+    "reference_argmax_differs": 0,
+    "logprob_gap": {
+     "n": 2048,
+     "median": 6.739878002326449e-05,
+     "p99": 0.0007180105282413862,
+     "max": 0.0009596917410412686
+    }
+   },
+   "llama_cpp": {
+    "steps": 1024,
+    "reference_argmax_differs": 0,
+    "logprob_gap": {
+     "n": 1674,
+     "median": 0.00034110999433581424,
+     "p99": 0.003404959080306913,
+     "max": 0.005811166161864723
+    }
+   }
+  },
+  "q2k_gate_up": {
+   "engine": {
+    "steps": 1024,
+    "reference_argmax_differs": 0,
+    "logprob_gap": {
+     "n": 2048,
+     "median": 5.299955506737897e-05,
+     "p99": 0.0007667637760977453,
+     "max": 0.0021546310646911593
+    }
+   },
+   "llama_cpp": {
+    "steps": 1024,
+    "reference_argmax_differs": 12,
+    "logprob_gap": {
+     "n": 1696,
+     "median": 0.04297471830269295,
+     "p99": 0.451664969194721,
+     "max": 0.7812173002519693
+    }
+   }
+  },
+  "q3k_down": {
+   "engine": {
+    "steps": 952,
+    "reference_argmax_differs": 0,
+    "logprob_gap": {
+     "n": 1904,
+     "median": 6.919753112555327e-05,
+     "p99": 0.0006712799081292076,
+     "max": 0.0011346162199252774
+    }
+   },
+   "llama_cpp": {
+    "steps": 934,
+    "reference_argmax_differs": 6,
+    "logprob_gap": {
+     "n": 1146,
+     "median": 0.010264978954168225,
+     "p99": 0.13169259878351802,
+     "max": 0.19610076679250898
+    }
+   }
+  }
+ },
+ "engine_vs_llama_tokens": {
+  "kquant": "3/32 prompts identical, 37% prefix agreement, first divergence at step 1 on 15 prompts",
+  "f32": "32/32 prompts identical, 1024/1024 tokens"
+ },
+ "ablations_kquant_engine_vs_llama": {
+  "note": "token agreement on random weights is noisy and was not used for the verdict; kept because it pointed at the experts only after the reference existed",
+  "routed_only": "34%, first divergence >= 11",
+  "shared_expert_kept": "34%, >= 11",
+  "full_attention_kept": "28%, >= 6",
+  "gdn_kept": "6%, step 1"
+ },
+ "speed_note": "not a benchmark: on these fixtures the engine decodes 20 tok/s (kquant) and 92 tok/s (f32), llama.cpp 1275 and 762 tok/s; engine runs show about as much system time as user time"
+}
