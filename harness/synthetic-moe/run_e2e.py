@@ -165,6 +165,9 @@ def fmt(v: float | bool | None) -> str:
 def lane_main(args: argparse.Namespace) -> int:
     """One lane run for gnostral-bench: capture, parity vs reference, then metrics."""
     out = Path(args.out)
+    if (out / "PARITY_FAIL").exists():
+        sys.stderr.write("skipped: an earlier lane failed parity\n")
+        return 5
     cfg = {"cache_bytes": args.cache_bytes, "profile": args.profile}
     latest = out / f"capture-{args.config}-{args.lane}-latest.json"
     run = run_sampled(capture_cmd(args, out, args.lane, latest), residency_env(cfg, args.lane))
@@ -184,6 +187,8 @@ def lane_main(args: argparse.Namespace) -> int:
          "--candidate", str(latest)],
         capture_output=True, text=True)
     print("GNOSTRAL_PARITY " + ("PASS" if parity.returncode == 0 else "FAIL"))
+    if parity.returncode != 0:
+        (out / "PARITY_FAIL").write_text(f"{args.config}/{args.lane}\n{parity.stdout}{parity.stderr}")
     for line in run["stdout"].splitlines():
         if line.startswith("GNOSTRAL_METRICS "):
             metrics = json.loads(line[len("GNOSTRAL_METRICS "):])
@@ -246,6 +251,8 @@ def run_config(args: argparse.Namespace, out: Path, config: str, cfg: dict, mode
                  "--manifest", str(args.manifest), "--max-tokens", str(args.max_tokens),
                  "--device", args.device, "--config", config,
                  "--cache-bytes", str(cfg["cache_bytes"]), "--profile", str(cfg["profile"])]
+    if args.model:
+        lane_args += ["--model", args.model]
     plan = {
         "schema": "gnostral.rs/engine-benchmark-plan/v1",
         "run_id": f"synthetic-moe-e2e-{config}",
@@ -297,6 +304,8 @@ def main() -> int:
     parser.add_argument("--device", choices=("cpu", "cuda"), default="cpu")
     parser.add_argument("--model", help="existing GGUF to run instead of the synthetic fixture "
                         "(give --layers/--experts/--moe-inter/--hidden of that model)")
+    parser.add_argument("--cpu-experts-only", action="store_true",
+                        help="skip the recording pass and the mixed configuration")
     parser.add_argument("--mixed-bytes", type=int, help="explicit expert budget for the mixed configuration")
     parser.add_argument("--hidden", type=int, default=512)
     parser.add_argument("--layers", type=int, default=2)
@@ -334,6 +343,9 @@ def main() -> int:
 
     # Configuration 1: every expert on the CPU (budget of one byte, empty ranking).
     cpu_cfg = {"cache_bytes": 1, "profile": empty}
+    configs = [("cpu-experts", cpu_cfg)]
+    if args.cpu_experts_only:
+        return finish(args, out, geometry, model, model_sha, configs)
     # Recording pass: count observed expert demand on the frozen workload.
     recorded = out / "profile-recorded.json"
     record = capture(args, out, cpu_cfg, "per-route", out / "capture-record.json",
@@ -344,8 +356,12 @@ def main() -> int:
     # Configuration 2: the recorded profile with a real budget.
     mixed_cfg = {"cache_bytes": args.mixed_bytes or int(expert_bytes(geometry) * args.mixed_fraction), "profile": recorded}
 
-    blocks = [run_config(args, out, name, cfg, model, model_sha)
-              for name, cfg in (("cpu-experts", cpu_cfg), ("mixed-experts", mixed_cfg))]
+    return finish(args, out, geometry, model, model_sha, configs + [("mixed-experts", mixed_cfg)])
+
+
+def finish(args: argparse.Namespace, out: Path, geometry: dict, model: Path, model_sha: str,
+           configs: list) -> int:
+    blocks = [run_config(args, out, name, cfg, model, model_sha) for name, cfg in configs]
     receipt = {
         "schema": "gnostral.rs/synthetic-moe-e2e-device/1",
         "device": args.device,
