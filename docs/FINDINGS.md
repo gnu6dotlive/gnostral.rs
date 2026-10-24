@@ -295,6 +295,27 @@ Rules:
   per tensor. `harness/model-inventory/gguf_inventory.py` answers both from the header in seconds;
   it has to run on the lab's copy of the file before any engineering is chosen for this model.
 
+### F-027 · 2026-10-24 · The program's engine work exists for one architecture: `qwen3moe`
+
+- **Class:** OBSERVED from source; the porting estimate is INFERRED.
+- **What:** expert residency, and with it the Q-029 kernels and patch `0007`'s sizing, runs only for
+  `Qwen3MoeForCausalLM`: `mistralrs-core/src/pipeline/normal.rs` refuses a residency request for any other
+  architecture ("native expert residency pilot only supports unadapted single-file Qwen3 MoE GGUF without
+  ISQ"), and `models/qwen3_moe.rs` is the only model that builds `MoEExperts::new_resident`. The engine's
+  GGUF registry (`gguf/normal_registry.rs`) does know `qwen35moe`, `qwen3next`, `lfm2moe` and `gpt-oss`; a
+  `qwen35moe` file loads through the Qwen3Next adapter. So a Qwen3.5/3.6 MoE in a loadable quantisation
+  would run without any of the program's work, as a plain mistral.rs model. The message says
+  "single-file", but no shard check was found in that condition: UNKNOWN whether split files are refused.
+- **Porting estimate (INFERRED):** `models/qwen3_next.rs` uses the same `MoEExperts` block plus a dense
+  shared expert, so residency would need the `new_resident` switch, the architecture gate, and a sizing fix
+  like `0007`. Verifying it needs a synthetic `qwen35moe` fixture with well-formed linear-attention tensors.
+- **Process (PROCESS):** the first `gguf_inventory.py` (`39334c9`) ignored the architecture, and would have
+  reported gpt-oss's MXFP4 experts as refused (they load through a dedicated binding,
+  `gguf/normal_bindings.rs`) and a `qwen35moe` file with Q4_K experts as running on residency. Both are
+  fixed, each with a test; the architecture gate's test was checked to fail when `qwen35moe` is wrongly
+  allowed. Found while checking the owner's updated report against the source, before anyone used the
+  tool's verdict.
+
 ## Evidence not yet in the repository
 
 These directories exist on the lab disk only. Until they are committed they are not program
