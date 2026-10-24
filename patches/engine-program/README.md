@@ -17,9 +17,12 @@ to the inventory). `git apply --check` against that tree passes.
 | `0002-mistralrs-strata-trace-cpu-optin-capture-q042-q030-q031.patch` | `988cc52c...7220d4` | On top of `0001`: Q-042 timers (`gnostral-trace` feature, `GNOSTRAL_TRACE=1`, reset after the warmup dummy run), the all-CPU residency opt-in `GNOSTRAL_EXPERT_RESIDENCY_CPU=1`, and the `gnostral_capture` example (Q-030 captures + `GNOSTRAL_METRICS` for Q-031) |
 | `0003-mistralrs-strata-expert-demand-profile-q027.patch` | `43db8ef6...7a0532` | On top of `0002`: `GNOSTRAL_EXPERT_PROFILE_OUT=path` records routed demand per expert and writes a profile in the exact schema `GNOSTRAL_EXPERT_PROFILE` loads (ranked by observed routes) plus `path.demand.json` with the counts; written atomically every 256 layer forwards and on drain |
 | `0004-mistralrs-strata-gnostral-kernel-candle-compat-q029.patch` | `c9d96463...dc773f` | On top of `0003`: the `gnostral` lane calls `grouped_expert_ffn` with `Numerics::CandleCompat`, so it is bit-equal to the `candle` lane; the residency test asserts bit equality |
+| `0005-mistralrs-strata-capture-topn-logprobs-only-no-prefix-cache.patch` | see file | On top of `0004`: `gnostral_capture` gains `--topn N --logprobs-out PATH` (top-N logprobs per step), `--no-prefix-cache` and `--only ID,ID` (reproducibility diagnostics) |
+| `0006-mistralrs-strata-residency-aware-device-map-q027.patch` | `c4b8c867...c617b4` | On top of `0005`: residency-aware sizing in `GgufDeviceMapLoaderInner`. **Only the legacy adapter path uses it**; on the lab, `GgufModelBuilder` still mapped 16 of 48 layers to CUDA with 0006 alone. Kept for that path; `0007` is the fix that matters |
+| `0007-mistralrs-strata-residency-aware-native-gguf-device-map-q027.patch` | `d42d60cf...72403d` | On top of `0006`: the native GGUF path (`load_native_normal` -> `NormalLoader` -> `Qwen3MoELoader`, PreparedWeightSource sizing) drops expert stacks from mapped layer sizes under residency and reserves the cache budget once. Unit test on the Qwen3-30B-A3B geometry; the lab must confirm `Layers 0-47: cuda[0]` |
 | `candle-strata-public-reconstruction.BUILD-ONLY.patch` | `f9549036...98e7b` | **Not for the lab.** Lets the public candle `35d7ae7` stand in for the unpublished lab candle-strata (`f0f334aa`): reconstructed `expert_slice_to`, the Q-010 `cpu_expert_matmul_k`, `cuda_allocation_bytes`, and load-refusing Bonsai PQ2_0/PTQ1_0 stubs |
 
-The lab tree already carries the real candle-strata; apply `0001` to `0004` in order there, not the BUILD-ONLY patch.
+The lab tree already carries the real candle-strata; apply `0001` to `0007` in order there, not the BUILD-ONLY patch.
 
 ## Runtime selection (same binary, A/B by environment)
 

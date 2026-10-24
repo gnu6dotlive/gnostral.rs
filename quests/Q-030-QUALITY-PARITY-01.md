@@ -1,7 +1,7 @@
 # Q-030 — QUALITY-PARITY-01
 
 Review date: 2026-10-23
-State: **PROPOSED** — oracle, frozen 32-prompt set, frozen thresholds, divergence ledger and gate receipt landed; capture tool `gnostral_capture` (engine patch 0002) exercised end to end on a synthetic fixture only; no reference tokens of a real model captured; no measurement exists.
+State: **PROPOSED** — oracle, frozen 32-prompt set, frozen thresholds, divergence ledger and gate receipt landed; capture tool `gnostral_capture` (engine patches 0002, 0005) exercised on the synthetic fixture and on Qwen3-30B-A3B for diagnostics, which showed the engine did not reproduce itself across loads ([F-009, F-010](../docs/FINDINGS.md)); no gate receipt on a real model exists.
 Authorization: a new harness under `harness/bench/` with schemas under `schemas/` and receipts under
 `evidence/runs/`; one GPU session to capture reference tokens. This quest does not authorize changing
 sampling, routing, quantization or the tokenizer to make a gate pass.

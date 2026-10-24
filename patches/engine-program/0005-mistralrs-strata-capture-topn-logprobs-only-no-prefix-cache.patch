@@ -1,0 +1,103 @@
+--- a/mistralrs/examples/gnostral_capture/main.rs	2026-10-24 09:34:59.107624438 -0400
++++ b/mistralrs/examples/gnostral_capture/main.rs	2026-10-24 09:34:59.108426576 -0400
+@@ -3,7 +3,8 @@
+ //! Run with:
+ //! `cargo run --release --example gnostral_capture -p mistralrs --features gnostral-expert-residency -- \
+ //!   --model-dir DIR --file MODEL.gguf --manifest PROMPTS.json --promptset-sha256 HASH \
+-//!   --engine NAME --binary-sha256 HASH --model-sha256 HASH --max-tokens N --out CAPTURE.json [--cpu]`
++//!   --engine NAME --binary-sha256 HASH --model-sha256 HASH --max-tokens N --out CAPTURE.json [--cpu] [--no-prefix-cache] [--only ID,ID] \
++//!   [--topn N --logprobs-out LOGPROBS.json]`
+ //!
+ //! Writes a `gnostral.quality.capture/1` document (token ids of the greedy top-1 logprob at
+ //! temperature 0) and prints one `GNOSTRAL_METRICS` line aggregated over every prompt.
+@@ -25,17 +26,26 @@
+     max_tokens: usize,
+     out: String,
+     cpu: bool,
++    no_prefix_cache: bool,
++    only: Option<Vec<String>>,
++    topn: usize,
++    logprobs_out: Option<String>,
+ }
+ 
+ fn parse() -> Result<Args> {
+     let mut map = std::collections::HashMap::new();
+     let mut cpu = false;
++    let mut no_prefix_cache = false;
+     let mut it = std::env::args().skip(1);
+     while let Some(flag) = it.next() {
+         if flag == "--cpu" {
+             cpu = true;
+             continue;
+         }
++        if flag == "--no-prefix-cache" {
++            no_prefix_cache = true;
++            continue;
++        }
+         let value = it.next().with_context(|| format!("{flag} needs a value"))?;
+         map.insert(flag, value);
+     }
+@@ -52,6 +62,10 @@
+         max_tokens: need(take("--max-tokens"), "--max-tokens")?.parse()?,
+         out: need(take("--out"), "--out")?,
+         cpu,
++        no_prefix_cache,
++        only: take("--only").map(|v| v.split(',').map(str::to_owned).collect()),
++        topn: take("--topn").map(|v| v.parse()).transpose()?.unwrap_or(1),
++        logprobs_out: take("--logprobs-out"),
+     })
+ }
+ 
+@@ -68,20 +82,27 @@
+     if args.cpu {
+         builder = builder.with_force_cpu();
+     }
++    if args.no_prefix_cache {
++        builder = builder.with_prefix_cache_n(None);
++    }
+     let model = builder.build().await?;
+ 
+     let mut captures = Vec::new();
++    let mut logprob_docs = Vec::new();
+     let (mut completion_tokens, mut completion_s) = (0usize, 0f64);
+     let (mut prompt_tokens, mut prompt_s) = (0usize, 0f64);
+     let mut ttft_ms = Vec::new();
+     for prompt in prompts {
+         let id = prompt["id"].as_str().context("prompt id")?;
++        if args.only.as_ref().is_some_and(|only| !only.iter().any(|o| o == id)) {
++            continue;
++        }
+         let text = prompt["text"].as_str().context("prompt text")?;
+         let request = RequestBuilder::new()
+             .set_deterministic_sampler()
+             .set_sampler_max_len(args.max_tokens)
+             .return_logprobs(true)
+-            .set_sampler_topn_logprobs(1)
++            .set_sampler_topn_logprobs(args.topn)
+             .add_message(TextMessageRole::User, text);
+         let response = model.send_chat_request(request).await?;
+         let choice = response.choices.first().context("no choice")?;
+@@ -100,6 +121,13 @@
+         if ids.is_empty() {
+             bail!("prompt {id}: no tokens generated");
+         }
++        logprob_docs.push(json!({
++            "prompt_id": id,
++            "steps": content
++                .iter()
++                .map(|e| e.top_logprobs.iter().map(|t| json!([t.token, t.logprob])).collect::<Vec<_>>())
++                .collect::<Vec<_>>(),
++        }));
+         captures.push(json!({
+             "prompt_id": id,
+             "prompt_sha256": prompt["sha256"],
+@@ -125,6 +153,9 @@
+         "captures": captures,
+     });
+     std::fs::write(&args.out, serde_json::to_string_pretty(&document)?)?;
++    if let Some(path) = &args.logprobs_out {
++        std::fs::write(path, serde_json::to_string(&logprob_docs)?)?;
++    }
+ 
+     let rate = |tokens: usize, secs: f64| (secs > 0.0).then(|| tokens as f64 / secs);
+     ttft_ms.sort_by(f64::total_cmp);

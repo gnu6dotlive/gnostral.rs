@@ -1,7 +1,7 @@
 # Q-031 — ENGINE-PERF-01
 
 Review date: 2026-10-23
-State: **PROPOSED** — lane driver (`gnostral-bench run`), receipt encoder, validator and Pareto renderer landed; exercised end to end against the patched engine on a synthetic CPU fixture (comparison correctly refused: driver `UNKNOWN`); no real lane on a real model has been run.
+State: **PROPOSED** — lane driver (`gnostral-bench run`), receipt encoder, validator and Pareto renderer landed; exercised end to end on synthetic CPU and CUDA fixtures (CUDA comparison accepted with driver `NO_XID`, [F-006, F-007](../docs/FINDINGS.md)); the first real-model run was stopped by the parity gate before timing ([F-009](../docs/FINDINGS.md)); no real-model receipt exists.
 Authorization: a new harness under `harness/bench/`, schemas under `schemas/`, synthetic receipts for
 testing, and one real multi-lane run on the lab host. This quest does not authorize a benchmark
 protocol change, a lane shortcut, or a result published without its samples.

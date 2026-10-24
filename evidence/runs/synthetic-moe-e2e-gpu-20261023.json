@@ -1,0 +1,291 @@
+{
+  "schema": "gnostral.rs/synthetic-moe-e2e-device/1",
+  "device": "cuda",
+  "model": {
+    "path": "/home/tension_atoi/Projects/gnostral.rs/evidence/runs/synthetic-moe-gpu-big-20261023/synth.gguf",
+    "sha256": "d26ee008f5b1c0e96e56b73471d0f70fa9bbeac98432ff9f4a3dd13daecb3b82",
+    "layers": 8,
+    "experts": 64,
+    "top_k": 4,
+    "hidden": 2048,
+    "moe_inter": 768,
+    "vocab": 258,
+    "seed": 20261023
+  },
+  "expert_bytes_total": 874512384,
+  "max_tokens": 128,
+  "repetitions": 7,
+  "note": "synthetic noise model: proves plumbing, not engine performance",
+  "configs": [
+    {
+      "config": "cpu-experts",
+      "cache_bytes": 1,
+      "profile": "/home/tension_atoi/Projects/gnostral.rs/evidence/runs/synthetic-moe-gpu-big-20261023/profile-empty.json",
+      "bench_exit": 0,
+      "baseline": "per-route",
+      "lanes": {
+        "per-route": {
+          "decode_tok_s": [
+            124.63848888296117,
+            124.13673431792726,
+            125.70725721212969,
+            126.88446687657604,
+            126.25745722583417,
+            111.51639967575713,
+            111.61034610329334
+          ],
+          "parity": [
+            "PASS",
+            "PASS",
+            "PASS",
+            "PASS",
+            "PASS",
+            "PASS",
+            "PASS"
+          ],
+          "device": [
+            "GNOSTRAL_DEVICE cuda pid_seen=true peak_process_mib=366.0 peak_card_mib=3034.0 ambient_mib=2610.0",
+            "GNOSTRAL_DEVICE cuda pid_seen=true peak_process_mib=366.0 peak_card_mib=3035.0 ambient_mib=2612.0",
+            "GNOSTRAL_DEVICE cuda pid_seen=true peak_process_mib=366.0 peak_card_mib=3027.0 ambient_mib=2601.0",
+            "GNOSTRAL_DEVICE cuda pid_seen=true peak_process_mib=366.0 peak_card_mib=3024.0 ambient_mib=2601.0",
+            "GNOSTRAL_DEVICE cuda pid_seen=true peak_process_mib=366.0 peak_card_mib=3036.0 ambient_mib=2601.0",
+            "GNOSTRAL_DEVICE cuda pid_seen=true peak_process_mib=366.0 peak_card_mib=3035.0 ambient_mib=2647.0",
+            "GNOSTRAL_DEVICE cuda pid_seen=true peak_process_mib=366.0 peak_card_mib=3034.0 ambient_mib=2637.0"
+          ],
+          "vram_mib": [
+            3034.0,
+            3035.0,
+            3027.0,
+            3024.0,
+            3036.0,
+            3035.0,
+            3034.0
+          ],
+          "min": 111.51639967575713,
+          "median": 124.63848888296117,
+          "max": 126.88446687657604,
+          "verdict_vs_baseline": "baseline"
+        },
+        "grouped": {
+          "decode_tok_s": [
+            97.11927407168311,
+            106.69967778279157,
+            131.29014549630307,
+            131.3479969738654,
+            113.16397170893619,
+            114.16807639954094,
+            113.47630264101352
+          ],
+          "parity": [
+            "PASS",
+            "PASS",
+            "PASS",
+            "PASS",
+            "PASS",
+            "PASS",
+            "PASS"
+          ],
+          "device": [
+            "GNOSTRAL_DEVICE cuda pid_seen=true peak_process_mib=366.0 peak_card_mib=3035.0 ambient_mib=2612.0",
+            "GNOSTRAL_DEVICE cuda pid_seen=true peak_process_mib=366.0 peak_card_mib=3036.0 ambient_mib=2610.0",
+            "GNOSTRAL_DEVICE cuda pid_seen=true peak_process_mib=366.0 peak_card_mib=3024.0 ambient_mib=2601.0",
+            "GNOSTRAL_DEVICE cuda pid_seen=true peak_process_mib=366.0 peak_card_mib=2975.0 ambient_mib=2603.0",
+            "GNOSTRAL_DEVICE cuda pid_seen=true peak_process_mib=366.0 peak_card_mib=2970.0 ambient_mib=2648.0",
+            "GNOSTRAL_DEVICE cuda pid_seen=true peak_process_mib=366.0 peak_card_mib=3015.0 ambient_mib=2663.0",
+            "GNOSTRAL_DEVICE cuda pid_seen=true peak_process_mib=366.0 peak_card_mib=3018.0 ambient_mib=2663.0"
+          ],
+          "vram_mib": [
+            3035.0,
+            3036.0,
+            3024.0,
+            2975.0,
+            2970.0,
+            3015.0,
+            3018.0
+          ],
+          "min": 97.11927407168311,
+          "median": 113.47630264101352,
+          "max": 131.3479969738654,
+          "verdict_vs_baseline": "inconclusive (ranges overlap)"
+        },
+        "gnostral": {
+          "decode_tok_s": [
+            250.63060675707572,
+            226.550131482717,
+            257.1716172574466,
+            258.95895015668304,
+            269.9826405442064,
+            266.8606367036123,
+            272.55410002096096
+          ],
+          "parity": [
+            "PASS",
+            "PASS",
+            "PASS",
+            "PASS",
+            "PASS",
+            "PASS",
+            "PASS"
+          ],
+          "device": [
+            "GNOSTRAL_DEVICE cuda pid_seen=true peak_process_mib=366.0 peak_card_mib=2999.0 ambient_mib=2662.0",
+            "GNOSTRAL_DEVICE cuda pid_seen=true peak_process_mib=366.0 peak_card_mib=3024.0 ambient_mib=2611.0",
+            "GNOSTRAL_DEVICE cuda pid_seen=true peak_process_mib=366.0 peak_card_mib=2972.0 ambient_mib=2653.0",
+            "GNOSTRAL_DEVICE cuda pid_seen=true peak_process_mib=366.0 peak_card_mib=3024.0 ambient_mib=2601.0",
+            "GNOSTRAL_DEVICE cuda pid_seen=true peak_process_mib=366.0 peak_card_mib=3034.0 ambient_mib=2595.0",
+            "GNOSTRAL_DEVICE cuda pid_seen=true peak_process_mib=366.0 peak_card_mib=3034.0 ambient_mib=2643.0",
+            "GNOSTRAL_DEVICE cuda pid_seen=true peak_process_mib=366.0 peak_card_mib=3066.0 ambient_mib=2647.0"
+          ],
+          "vram_mib": [
+            2999.0,
+            3024.0,
+            2972.0,
+            3024.0,
+            3034.0,
+            3034.0,
+            3066.0
+          ],
+          "min": 226.550131482717,
+          "median": 258.95895015668304,
+          "max": 272.55410002096096,
+          "verdict_vs_baseline": "faster"
+        }
+      }
+    },
+    {
+      "config": "mixed-experts",
+      "cache_bytes": 437256192,
+      "profile": "/home/tension_atoi/Projects/gnostral.rs/evidence/runs/synthetic-moe-gpu-big-20261023/profile-recorded.json",
+      "bench_exit": 0,
+      "baseline": "per-route",
+      "lanes": {
+        "per-route": {
+          "decode_tok_s": [
+            231.60799465065267,
+            232.9564689664452,
+            233.57317338091275,
+            223.42705007567582,
+            220.26629121361844,
+            228.5315795432302,
+            222.3873847271899
+          ],
+          "parity": [
+            "PASS",
+            "PASS",
+            "PASS",
+            "PASS",
+            "PASS",
+            "PASS",
+            "PASS"
+          ],
+          "device": [
+            "GNOSTRAL_DEVICE cuda pid_seen=true peak_process_mib=782.0 peak_card_mib=3424.0 ambient_mib=2663.0",
+            "GNOSTRAL_DEVICE cuda pid_seen=true peak_process_mib=782.0 peak_card_mib=3424.0 ambient_mib=2637.0",
+            "GNOSTRAL_DEVICE cuda pid_seen=true peak_process_mib=782.0 peak_card_mib=3482.0 ambient_mib=2637.0",
+            "GNOSTRAL_DEVICE cuda pid_seen=true peak_process_mib=782.0 peak_card_mib=3691.0 ambient_mib=2637.0",
+            "GNOSTRAL_DEVICE cuda pid_seen=true peak_process_mib=782.0 peak_card_mib=3617.0 ambient_mib=3150.0",
+            "GNOSTRAL_DEVICE cuda pid_seen=true peak_process_mib=782.0 peak_card_mib=3472.0 ambient_mib=2685.0",
+            "GNOSTRAL_DEVICE cuda pid_seen=true peak_process_mib=782.0 peak_card_mib=3606.0 ambient_mib=2685.0"
+          ],
+          "vram_mib": [
+            3424.0,
+            3424.0,
+            3482.0,
+            3691.0,
+            3617.0,
+            3472.0,
+            3606.0
+          ],
+          "min": 220.26629121361844,
+          "median": 228.5315795432302,
+          "max": 233.57317338091275,
+          "verdict_vs_baseline": "baseline"
+        },
+        "grouped": {
+          "decode_tok_s": [
+            248.03575090904326,
+            248.8789251519697,
+            252.4207750060335,
+            242.13637089717767,
+            237.47411986546655,
+            240.41081582625566,
+            242.974156376189
+          ],
+          "parity": [
+            "PASS",
+            "PASS",
+            "PASS",
+            "PASS",
+            "PASS",
+            "PASS",
+            "PASS"
+          ],
+          "device": [
+            "GNOSTRAL_DEVICE cuda pid_seen=true peak_process_mib=846.0 peak_card_mib=3478.0 ambient_mib=2637.0",
+            "GNOSTRAL_DEVICE cuda pid_seen=true peak_process_mib=878.0 peak_card_mib=3520.0 ambient_mib=2627.0",
+            "GNOSTRAL_DEVICE cuda pid_seen=true peak_process_mib=846.0 peak_card_mib=3488.0 ambient_mib=2637.0",
+            "GNOSTRAL_DEVICE cuda pid_seen=true peak_process_mib=878.0 peak_card_mib=3580.0 ambient_mib=2690.0",
+            "GNOSTRAL_DEVICE cuda pid_seen=true peak_process_mib=846.0 peak_card_mib=3548.0 ambient_mib=2742.0",
+            "GNOSTRAL_DEVICE cuda pid_seen=true peak_process_mib=846.0 peak_card_mib=3546.0 ambient_mib=2685.0",
+            "GNOSTRAL_DEVICE cuda pid_seen=true peak_process_mib=878.0 peak_card_mib=3560.0 ambient_mib=2685.0"
+          ],
+          "vram_mib": [
+            3478.0,
+            3520.0,
+            3488.0,
+            3580.0,
+            3548.0,
+            3546.0,
+            3560.0
+          ],
+          "min": 237.47411986546655,
+          "median": 242.974156376189,
+          "max": 252.4207750060335,
+          "verdict_vs_baseline": "faster"
+        },
+        "gnostral": {
+          "decode_tok_s": [
+            319.7064004463678,
+            319.88472541520156,
+            321.9197298555124,
+            304.1095893054217,
+            315.0810335231496,
+            220.97354303940168,
+            313.3594407676814
+          ],
+          "parity": [
+            "PASS",
+            "PASS",
+            "PASS",
+            "PASS",
+            "PASS",
+            "PASS",
+            "PASS"
+          ],
+          "device": [
+            "GNOSTRAL_DEVICE cuda pid_seen=true peak_process_mib=846.0 peak_card_mib=3488.0 ambient_mib=2627.0",
+            "GNOSTRAL_DEVICE cuda pid_seen=true peak_process_mib=878.0 peak_card_mib=3520.0 ambient_mib=2637.0",
+            "GNOSTRAL_DEVICE cuda pid_seen=true peak_process_mib=878.0 peak_card_mib=3520.0 ambient_mib=2637.0",
+            "GNOSTRAL_DEVICE cuda pid_seen=true peak_process_mib=846.0 peak_card_mib=3995.0 ambient_mib=2676.0",
+            "GNOSTRAL_DEVICE cuda pid_seen=true peak_process_mib=846.0 peak_card_mib=3554.0 ambient_mib=2689.0",
+            "GNOSTRAL_DEVICE cuda pid_seen=true peak_process_mib=846.0 peak_card_mib=3536.0 ambient_mib=2685.0",
+            "GNOSTRAL_DEVICE cuda pid_seen=true peak_process_mib=878.0 peak_card_mib=3560.0 ambient_mib=2677.0"
+          ],
+          "vram_mib": [
+            3488.0,
+            3520.0,
+            3520.0,
+            3995.0,
+            3554.0,
+            3536.0,
+            3560.0
+          ],
+          "min": 220.97354303940168,
+          "median": 315.0810335231496,
+          "max": 321.9197298555124,
+          "verdict_vs_baseline": "inconclusive (ranges overlap)"
+        }
+      }
+    }
+  ]
+}

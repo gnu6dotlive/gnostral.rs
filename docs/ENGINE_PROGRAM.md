@@ -250,8 +250,9 @@ improvement, keep them off by default and publish the negative results.
 
 ## What is executable without a GPU today
 
-This environment has CUDA 13.4 but **no working NVIDIA driver** (`nvidia-smi` fails). All GPU runs
-happen on the lab host. Anything that needs a real engine forward pass is therefore GPU-gated.
+Cloud and CI sessions have no NVIDIA driver; all GPU runs happen on the lab host (RTX 3070 8 GiB).
+Anything that needs a real CUDA forward pass is GPU-gated. A CPU forward pass of the real engine on
+the synthetic fixture runs anywhere (`harness/synthetic-moe/`).
 
 | Quest | Testable here (CPU) | GPU-gated on the lab host |
 | --- | --- | --- |
@@ -285,7 +286,7 @@ happen on the lab host. Anything that needs a real engine forward pass is theref
 
 ## Current state
 
-Strictly what is true at the head of `feat/engine-program` (2026-10-23). Uncommitted files in a working
+Strictly what is true at the head of `feat/engine-program` (revised 2026-10-24; the reasoning behind each change is in [FINDINGS.md](FINDINGS.md)). Uncommitted files in a working
 tree are not program state: a quest changes state only when its commit lands and, later, when its
 receipt exists.
 
@@ -293,15 +294,15 @@ receipt exists.
 | --- | --- |
 | Release `v0.9.0-rc1` | Exists as a tag (`b2578a0`); identity and gates in [RELEASE.md](RELEASE.md) |
 | `crates/gnostral-moe-exec/` (Q-026 policy half) | Implemented and tested offline (13 tests): deterministic grouping, conservation, placement isolation, reference executor, and `gather_group` / `scatter_ordered`, whose `(token, ordinal)` scatter makes a grouped executor bit-equal to the per-route engine loop for any input permutation and group cap |
-| Q-026/Q-029 engine integration | Patch [`patches/engine-program/0001`](../patches/engine-program/README.md) over the 20261023 engine tree: grouped executor (default) with the per-route loop kept behind `GNOSTRAL_MOE_EXECUTOR=per-route`, and the gnostral CPU kernel behind `GNOSTRAL_CPU_EXPERT_KERNEL=gnostral`. Compiled and tested on CPU only: 53 MoE tests pass, grouped output bit-equal to per-route. Patch `0002` adds Q-042 timers, an all-CPU residency opt-in and the `gnostral_capture` tool; on a synthetic Qwen3-MoE GGUF ([`harness/synthetic-moe/`](../harness/synthetic-moe/README.md)) `grouped` is token-identical to `per-route` on 32/32 frozen prompts and tracing is token-neutral. Patch `0004` makes the `gnostral` CPU kernel bit-equal to candle, also 32/32 token-identical ([receipt](../evidence/runs/synthetic-moe-e2e-20261023.json)). **No CUDA build, no GPU run, no real model, no measurement** |
+| Q-026/Q-029 engine integration | Patch [`patches/engine-program/0001`](../patches/engine-program/README.md) over the 20261023 engine tree: grouped executor (default) with the per-route loop kept behind `GNOSTRAL_MOE_EXECUTOR=per-route`, and the gnostral CPU kernel behind `GNOSTRAL_CPU_EXPERT_KERNEL=gnostral`. Compiled and tested on CPU only: 53 MoE tests pass, grouped output bit-equal to per-route. Patch `0002` adds Q-042 timers, an all-CPU residency opt-in and the `gnostral_capture` tool; on a synthetic Qwen3-MoE GGUF ([`harness/synthetic-moe/`](../harness/synthetic-moe/README.md)) `grouped` is token-identical to `per-route` on 32/32 frozen prompts and tracing is token-neutral. Patch `0004` makes the `gnostral` CPU kernel bit-equal to candle, also 32/32 token-identical ([receipt](../evidence/runs/synthetic-moe-e2e-20261023.json)). Patch `0005` adds capture diagnostics (top-N logprobs, prompt subset, prefix cache off). **On the lab host:** CUDA build; synthetic CUDA runs with comparison accepted ([receipt](../evidence/runs/synthetic-moe-e2e-gpu-20261023.json), F-006, F-007); Qwen3-30B-A3B Q2_K loads and runs on CUDA, but the first M1 run stopped on the parity gate because the automatic device map placed 15 or 16 of 48 layers on the card depending on free VRAM (F-009 to F-011). Patches `0006`/`0007` fix the sizing; `0007` is the one on the real load path and awaits the lab's placement report (F-012, F-013). **No qualified real-model measurement** |
 | `crates/gnostral-cpu-kernels/` (Q-029) | Implemented and tested offline (48 tests). Q8_0 reference path, plus the K-quant path the engine needs: GGML-layout `Q8_K`/`Q2_K`/`Q3_K` blocks (zero-copy view of GGUF bytes), scalar, AVX2 and AVX-512BW integer cores that are **bit-identical** to each other, a persistent thread pool, `gemm_q8k` and `grouped_expert_ffn` (bit-equal across 1-8 threads and across grouping). Parity against a transcription of the vendored candle `35d7ae7` loops: `Q8_K` quantisation, `Q2_K`/`Q3_K` dequantisation and the `Q2_K` dot are bit-equal; the native `Q3_K` dot is within a tolerance frozen in the test, and `Numerics::CandleCompat` (used by the engine) is bit-equal to transcriptions of candle's AVX2+FMA `Q2_K`/`Q3_K` intrinsics and of `vec_dot_unopt`, on every ISA. `kquant_bench` exists; **no benchmark has been run**, not compared with ggml/llama.cpp |
 | `crates/gnostral-expert-residency/` dynamic module (Q-027 policy) | Implemented and tested offline (11 new tests): decayed histogram, ticketed admission, typed refusals, lease/pin-safe eviction with hysteresis, shrink/grow, `UNKNOWN` device bytes. Engine side: patch `0003` records observed expert demand as a loadable static profile (`GNOSTRAL_EXPERT_PROFILE_OUT`), exercised on the synthetic fixture. Dynamic admission is not wired into the engine; no hit-rate receipt |
 | `crates/gnostral-memory-plan/` (Q-027/Q-028/Q-038/Q-041 arithmetic) | Implemented and tested offline (13 tests): envelope arbitration refusing an `UNKNOWN` desktop ambient, segmented allocator with elastic return, paged KV blocks with copy-on-write forks, KV tiering that never drops a block, ticketed block moves, desktop-reserve state machine. No device code, no measurement |
 | `crates/gnostral-scheduler/` (Q-028/Q-039 policy) | Implemented and tested offline (7 tests): continuous batching with paged-KV admission and recompute preemption, FIFO default and an SLO policy with aging and explicit deadline rejection, deterministic simulation with per-request receipts. Not wired into the engine scheduler; no C1/C4 measurement |
 | `crates/gnostral-supervisor/` (Q-040) | Implemented and tested against stub engines (9 tests): per-identity qualification, no capability inheritance, deny-`UNKNOWN` admission, exclusive GPU switching (A to B to A), lifecycle enforcement, crash isolation, streaming and cancel. No real engine has been run through it |
 | `crates/gnostral-trace/` (Q-042) | Implemented and tested offline (7 tests): off-by-default per-phase timers, allocation-free recording, wall-time reconciliation (interval union) with explicit `UNKNOWN`, measured overhead, JSON receipt. Wired into the engine by patch `0002` (schedule, forward, sample, cpu_expert); exercised only on the synthetic CPU fixture; no profile of a real model exists |
-| `harness/quality/` (Q-030) | Implemented and tested offline (41 tests): parity, KL (CLI default now `1e-3`), PIT/KS, plus the frozen 32-prompt gate set `q030-32-20261023` (`c573a8d8...1787e`), frozen thresholds `q030-gates-20261023`, a divergence ledger and a full `gate` receipt (BLOCKED / FAIL / INCOMPLETE / PASS). No capture from any engine exists; Q-025 prompt-byte reconciliation is open |
-| `harness/bench/` (Q-031) | Implemented and tested offline (42 tests): receipt validator, Pareto comparator, receipt encoder and the `run` lane driver (identity pins, 1 warmup, interleaved repetitions, every run kept, blocked lanes abort the comparison only). No real lane has been run |
+| `harness/quality/` (Q-030) | Implemented and tested offline (41 tests): parity, KL (CLI default now `1e-3`), PIT/KS, plus the frozen 32-prompt gate set `q030-32-20261023` (`c573a8d8...1787e`), frozen thresholds `q030-gates-20261023`, a divergence ledger and a full `gate` receipt (BLOCKED / FAIL / INCOMPLETE / PASS). Synthetic captures and real-model diagnostic captures exist (F-009, F-010); no gate receipt on a real model; Q-025 prompt-byte reconciliation is open |
+| `harness/bench/` (Q-031) | Implemented and tested offline (42 tests): receipt validator, Pareto comparator, receipt encoder and the `run` lane driver (identity pins, 1 warmup, interleaved repetitions, every run kept, blocked lanes abort the comparison only). Run on synthetic CPU and CUDA fixtures, and once on the real model, where the parity stop ended the run before timing (F-009) |
 | `crates/gnostral-cohost/` (Q-043) | Implemented and tested offline (7 tests): co-residency broker over the memory-plan envelope, core and elastic budgets, class rules, shrink/park/regrow plans checked step by step against capacity over 200 random sequences, typed refusals that change nothing, receipts. Branch `feat/assistant-engine`; no engine hook |
 | `crates/gnostral-assistant/` (Q-044/Q-045) | Implemented and tested offline (9 tests): voice turn state machine with barge-in, lossless speakable chunking, first-audio budget; non-preemptive EDF admission (processor-demand test with blocking) validated by simulation on over 500 admitted random stream sets with zero misses. A first, simpler bound was rejected by that test. No audio, no model |
 | `crates/gnostral-speculative/` (Q-046) | Implemented and tested offline (5 tests): greedy speculation oracle token-identical to plain greedy for any draft, acceptance tracker, draft-length and keep-draft policy. No draft model run |
@@ -309,10 +310,21 @@ receipt exists.
 | Q-037 prefetch | **Deliberately not started**: its gate forbids writing prefetch before a Q-042 profile shows upload stalls matter |
 | Q-033, Q-034 | **Not started** (W6, after the engine is fast and correct) |
 | Q-032, Q-035, Q-036 | Reserved; no scope assigned |
-| Engine speed claims | **None.** No benchmark under this program has been run |
+| `harness/diag/repro_capture.py` | Captures the same prompts twice per configuration and compares tokens, logprob bits and the logged device map; produced the F-010 matrix |
+| [FINDINGS.md](FINDINGS.md) | Append-only journal of what the program learned, including rejected fixes and process errors |
+| Engine speed claims | **None.** Synthetic-fixture timings exist and are labelled as such; no real-model benchmark qualifies |
 
 These crates and harnesses are on branch `feat/engine-program`, after the release tag; they are **not**
 part of the tagged `v0.9.0-rc1` tree.
+
+### Branches
+
+| Branch | Holds | Rule |
+| --- | --- | --- |
+| `feat/engine-program` | W1-W6 work, the engine patch series, the lab's harness and evidence | The lab host and cloud sessions both push here; pull before editing, never force-push |
+| `feat/assistant-engine` | W7 (Q-043 to Q-047): `gnostral-cohost`, `gnostral-assistant`, `gnostral-speculative`, the speech oracle | Branched at `ecd2ddf`. `feat/engine-program` is merged **into** it whenever it moves (merge, not rebase: its history is already pushed). It merges back into `feat/engine-program` after the first qualified M1 receipt, so the measurement branch stays small while M1 runs. W7 touches no engine file and no file the lab edits |
+
+Neither branch is merged into `main` or tagged without the owner's explicit decision.
 
 ## Non-claims
 

@@ -1,0 +1,844 @@
+{
+  "binary_sha256": "453b2558be66448435d835971ed2f54e26b0957494ace2074ba6e3428178f010",
+  "model_sha256": "db3ce897ccc9e7d9dbf17fe083cae7880a2092aa473b45eba8b77715aa9ca170",
+  "max_tokens": 32,
+  "rows": [
+    {
+      "config": "A",
+      "prompt_id": "q04-units",
+      "first_logprob_diff_idx": null,
+      "first_token_diff_idx": null,
+      "gap_prev_run1": null,
+      "gap_prev_run2": null,
+      "gap_at_div_run1": null,
+      "gap_at_div_run2": null,
+      "max_logprob_diff_before_div": 0.0,
+      "device_map_run1": [
+        "Layers 0-15: cuda[0]",
+        "Layers 16-47: cpu"
+      ],
+      "device_map_run2": [
+        "Layers 0-15: cuda[0]",
+        "Layers 16-47: cpu"
+      ]
+    },
+    {
+      "config": "A",
+      "prompt_id": "q07-sql",
+      "first_logprob_diff_idx": null,
+      "first_token_diff_idx": null,
+      "gap_prev_run1": null,
+      "gap_prev_run2": null,
+      "gap_at_div_run1": null,
+      "gap_at_div_run2": null,
+      "max_logprob_diff_before_div": 0.0,
+      "device_map_run1": [
+        "Layers 0-15: cuda[0]",
+        "Layers 16-47: cpu"
+      ],
+      "device_map_run2": [
+        "Layers 0-15: cuda[0]",
+        "Layers 16-47: cpu"
+      ]
+    },
+    {
+      "config": "A",
+      "prompt_id": "q09-bug",
+      "first_logprob_diff_idx": null,
+      "first_token_diff_idx": null,
+      "gap_prev_run1": null,
+      "gap_prev_run2": null,
+      "gap_at_div_run1": null,
+      "gap_at_div_run2": null,
+      "max_logprob_diff_before_div": 0.0,
+      "device_map_run1": [
+        "Layers 0-15: cuda[0]",
+        "Layers 16-47: cpu"
+      ],
+      "device_map_run2": [
+        "Layers 0-15: cuda[0]",
+        "Layers 16-47: cpu"
+      ]
+    },
+    {
+      "config": "A",
+      "prompt_id": "q10-fr-explain",
+      "first_logprob_diff_idx": null,
+      "first_token_diff_idx": null,
+      "gap_prev_run1": null,
+      "gap_prev_run2": null,
+      "gap_at_div_run1": null,
+      "gap_at_div_run2": null,
+      "max_logprob_diff_before_div": 0.0,
+      "device_map_run1": [
+        "Layers 0-15: cuda[0]",
+        "Layers 16-47: cpu"
+      ],
+      "device_map_run2": [
+        "Layers 0-15: cuda[0]",
+        "Layers 16-47: cpu"
+      ]
+    },
+    {
+      "config": "A",
+      "prompt_id": "q11-fr-translate",
+      "first_logprob_diff_idx": null,
+      "first_token_diff_idx": null,
+      "gap_prev_run1": null,
+      "gap_prev_run2": null,
+      "gap_at_div_run1": null,
+      "gap_at_div_run2": null,
+      "max_logprob_diff_before_div": 0.0,
+      "device_map_run1": [
+        "Layers 0-15: cuda[0]",
+        "Layers 16-47: cpu"
+      ],
+      "device_map_run2": [
+        "Layers 0-15: cuda[0]",
+        "Layers 16-47: cpu"
+      ]
+    },
+    {
+      "config": "A",
+      "prompt_id": "q19-summary-tech",
+      "first_logprob_diff_idx": null,
+      "first_token_diff_idx": null,
+      "gap_prev_run1": null,
+      "gap_prev_run2": null,
+      "gap_at_div_run1": null,
+      "gap_at_div_run2": null,
+      "max_logprob_diff_before_div": 0.0,
+      "device_map_run1": [
+        "Layers 0-15: cuda[0]",
+        "Layers 16-47: cpu"
+      ],
+      "device_map_run2": [
+        "Layers 0-15: cuda[0]",
+        "Layers 16-47: cpu"
+      ]
+    },
+    {
+      "config": "A",
+      "prompt_id": "q27-science",
+      "first_logprob_diff_idx": null,
+      "first_token_diff_idx": null,
+      "gap_prev_run1": null,
+      "gap_prev_run2": null,
+      "gap_at_div_run1": null,
+      "gap_at_div_run2": null,
+      "max_logprob_diff_before_div": 0.0,
+      "device_map_run1": [
+        "Layers 0-15: cuda[0]",
+        "Layers 16-47: cpu"
+      ],
+      "device_map_run2": [
+        "Layers 0-15: cuda[0]",
+        "Layers 16-47: cpu"
+      ]
+    },
+    {
+      "config": "A",
+      "prompt_id": "q29-code-explain",
+      "first_logprob_diff_idx": null,
+      "first_token_diff_idx": null,
+      "gap_prev_run1": null,
+      "gap_prev_run2": null,
+      "gap_at_div_run1": null,
+      "gap_at_div_run2": null,
+      "max_logprob_diff_before_div": 0.0,
+      "device_map_run1": [
+        "Layers 0-15: cuda[0]",
+        "Layers 16-47: cpu"
+      ],
+      "device_map_run2": [
+        "Layers 0-15: cuda[0]",
+        "Layers 16-47: cpu"
+      ]
+    },
+    {
+      "config": "A",
+      "prompt_id": "q32-refusal-boundary",
+      "first_logprob_diff_idx": null,
+      "first_token_diff_idx": null,
+      "gap_prev_run1": null,
+      "gap_prev_run2": null,
+      "gap_at_div_run1": null,
+      "gap_at_div_run2": null,
+      "max_logprob_diff_before_div": 0.0,
+      "device_map_run1": [
+        "Layers 0-15: cuda[0]",
+        "Layers 16-47: cpu"
+      ],
+      "device_map_run2": [
+        "Layers 0-15: cuda[0]",
+        "Layers 16-47: cpu"
+      ]
+    },
+    {
+      "config": "B",
+      "prompt_id": "q04-units",
+      "first_logprob_diff_idx": null,
+      "first_token_diff_idx": null,
+      "gap_prev_run1": null,
+      "gap_prev_run2": null,
+      "gap_at_div_run1": null,
+      "gap_at_div_run2": null,
+      "max_logprob_diff_before_div": 0.0,
+      "device_map_run1": [
+        "Layers 0-47: cpu"
+      ],
+      "device_map_run2": [
+        "Layers 0-47: cpu"
+      ]
+    },
+    {
+      "config": "B",
+      "prompt_id": "q07-sql",
+      "first_logprob_diff_idx": null,
+      "first_token_diff_idx": null,
+      "gap_prev_run1": null,
+      "gap_prev_run2": null,
+      "gap_at_div_run1": null,
+      "gap_at_div_run2": null,
+      "max_logprob_diff_before_div": 0.0,
+      "device_map_run1": [
+        "Layers 0-47: cpu"
+      ],
+      "device_map_run2": [
+        "Layers 0-47: cpu"
+      ]
+    },
+    {
+      "config": "B",
+      "prompt_id": "q09-bug",
+      "first_logprob_diff_idx": null,
+      "first_token_diff_idx": null,
+      "gap_prev_run1": null,
+      "gap_prev_run2": null,
+      "gap_at_div_run1": null,
+      "gap_at_div_run2": null,
+      "max_logprob_diff_before_div": 0.0,
+      "device_map_run1": [
+        "Layers 0-47: cpu"
+      ],
+      "device_map_run2": [
+        "Layers 0-47: cpu"
+      ]
+    },
+    {
+      "config": "B",
+      "prompt_id": "q10-fr-explain",
+      "first_logprob_diff_idx": null,
+      "first_token_diff_idx": null,
+      "gap_prev_run1": null,
+      "gap_prev_run2": null,
+      "gap_at_div_run1": null,
+      "gap_at_div_run2": null,
+      "max_logprob_diff_before_div": 0.0,
+      "device_map_run1": [
+        "Layers 0-47: cpu"
+      ],
+      "device_map_run2": [
+        "Layers 0-47: cpu"
+      ]
+    },
+    {
+      "config": "B",
+      "prompt_id": "q11-fr-translate",
+      "first_logprob_diff_idx": null,
+      "first_token_diff_idx": null,
+      "gap_prev_run1": null,
+      "gap_prev_run2": null,
+      "gap_at_div_run1": null,
+      "gap_at_div_run2": null,
+      "max_logprob_diff_before_div": 0.0,
+      "device_map_run1": [
+        "Layers 0-47: cpu"
+      ],
+      "device_map_run2": [
+        "Layers 0-47: cpu"
+      ]
+    },
+    {
+      "config": "B",
+      "prompt_id": "q19-summary-tech",
+      "first_logprob_diff_idx": null,
+      "first_token_diff_idx": null,
+      "gap_prev_run1": null,
+      "gap_prev_run2": null,
+      "gap_at_div_run1": null,
+      "gap_at_div_run2": null,
+      "max_logprob_diff_before_div": 0.0,
+      "device_map_run1": [
+        "Layers 0-47: cpu"
+      ],
+      "device_map_run2": [
+        "Layers 0-47: cpu"
+      ]
+    },
+    {
+      "config": "B",
+      "prompt_id": "q27-science",
+      "first_logprob_diff_idx": null,
+      "first_token_diff_idx": null,
+      "gap_prev_run1": null,
+      "gap_prev_run2": null,
+      "gap_at_div_run1": null,
+      "gap_at_div_run2": null,
+      "max_logprob_diff_before_div": 0.0,
+      "device_map_run1": [
+        "Layers 0-47: cpu"
+      ],
+      "device_map_run2": [
+        "Layers 0-47: cpu"
+      ]
+    },
+    {
+      "config": "B",
+      "prompt_id": "q29-code-explain",
+      "first_logprob_diff_idx": null,
+      "first_token_diff_idx": null,
+      "gap_prev_run1": null,
+      "gap_prev_run2": null,
+      "gap_at_div_run1": null,
+      "gap_at_div_run2": null,
+      "max_logprob_diff_before_div": 0.0,
+      "device_map_run1": [
+        "Layers 0-47: cpu"
+      ],
+      "device_map_run2": [
+        "Layers 0-47: cpu"
+      ]
+    },
+    {
+      "config": "B",
+      "prompt_id": "q32-refusal-boundary",
+      "first_logprob_diff_idx": null,
+      "first_token_diff_idx": null,
+      "gap_prev_run1": null,
+      "gap_prev_run2": null,
+      "gap_at_div_run1": null,
+      "gap_at_div_run2": null,
+      "max_logprob_diff_before_div": 0.0,
+      "device_map_run1": [
+        "Layers 0-47: cpu"
+      ],
+      "device_map_run2": [
+        "Layers 0-47: cpu"
+      ]
+    },
+    {
+      "config": "C1",
+      "prompt_id": "q04-units",
+      "first_logprob_diff_idx": 1,
+      "first_token_diff_idx": 27,
+      "gap_prev_run1": 17.06249940395338,
+      "gap_prev_run2": 17.56249940395338,
+      "gap_at_div_run1": 0.0,
+      "gap_at_div_run2": 0.25,
+      "max_logprob_diff_before_div": 0.3053390681743622,
+      "device_map_run1": [
+        "Layers 0-15: cuda[0]",
+        "Layers 16-47: cpu"
+      ],
+      "device_map_run2": [
+        "Layers 0-14: cuda[0]",
+        "Layers 15-47: cpu"
+      ]
+    },
+    {
+      "config": "C1",
+      "prompt_id": "q07-sql",
+      "first_logprob_diff_idx": 0,
+      "first_token_diff_idx": 16,
+      "gap_prev_run1": null,
+      "gap_prev_run2": null,
+      "gap_at_div_run1": 0.25,
+      "gap_at_div_run2": 1.0,
+      "max_logprob_diff_before_div": 0.06608331203460693,
+      "device_map_run1": [
+        "Layers 0-15: cuda[0]",
+        "Layers 16-47: cpu"
+      ],
+      "device_map_run2": [
+        "Layers 0-14: cuda[0]",
+        "Layers 15-47: cpu"
+      ]
+    },
+    {
+      "config": "C1",
+      "prompt_id": "q09-bug",
+      "first_logprob_diff_idx": 0,
+      "first_token_diff_idx": 24,
+      "gap_prev_run1": null,
+      "gap_prev_run2": null,
+      "gap_at_div_run1": 0.7500000596046448,
+      "gap_at_div_run2": 0.2500000596046448,
+      "max_logprob_diff_before_div": 0.20560327172279358,
+      "device_map_run1": [
+        "Layers 0-15: cuda[0]",
+        "Layers 16-47: cpu"
+      ],
+      "device_map_run2": [
+        "Layers 0-14: cuda[0]",
+        "Layers 15-47: cpu"
+      ]
+    },
+    {
+      "config": "C1",
+      "prompt_id": "q10-fr-explain",
+      "first_logprob_diff_idx": 0,
+      "first_token_diff_idx": 23,
+      "gap_prev_run1": null,
+      "gap_prev_run2": null,
+      "gap_at_div_run1": 1.0000000298023224,
+      "gap_at_div_run2": 0.0,
+      "max_logprob_diff_before_div": 0.07361003756523132,
+      "device_map_run1": [
+        "Layers 0-15: cuda[0]",
+        "Layers 16-47: cpu"
+      ],
+      "device_map_run2": [
+        "Layers 0-14: cuda[0]",
+        "Layers 15-47: cpu"
+      ]
+    },
+    {
+      "config": "C1",
+      "prompt_id": "q11-fr-translate",
+      "first_logprob_diff_idx": 0,
+      "first_token_diff_idx": 10,
+      "gap_prev_run1": null,
+      "gap_prev_run2": null,
+      "gap_at_div_run1": 0.75,
+      "gap_at_div_run2": 0.0,
+      "max_logprob_diff_before_div": 0.07490244507789612,
+      "device_map_run1": [
+        "Layers 0-15: cuda[0]",
+        "Layers 16-47: cpu"
+      ],
+      "device_map_run2": [
+        "Layers 0-14: cuda[0]",
+        "Layers 15-47: cpu"
+      ]
+    },
+    {
+      "config": "C1",
+      "prompt_id": "q19-summary-tech",
+      "first_logprob_diff_idx": 0,
+      "first_token_diff_idx": 8,
+      "gap_prev_run1": null,
+      "gap_prev_run2": null,
+      "gap_at_div_run1": 0.24999994039535522,
+      "gap_at_div_run2": 0.0,
+      "max_logprob_diff_before_div": 0.0009254366159439087,
+      "device_map_run1": [
+        "Layers 0-15: cuda[0]",
+        "Layers 16-47: cpu"
+      ],
+      "device_map_run2": [
+        "Layers 0-14: cuda[0]",
+        "Layers 15-47: cpu"
+      ]
+    },
+    {
+      "config": "C1",
+      "prompt_id": "q27-science",
+      "first_logprob_diff_idx": 0,
+      "first_token_diff_idx": 29,
+      "gap_prev_run1": null,
+      "gap_prev_run2": null,
+      "gap_at_div_run1": 0.0,
+      "gap_at_div_run2": 0.2500000596046448,
+      "max_logprob_diff_before_div": 0.11942097544670105,
+      "device_map_run1": [
+        "Layers 0-15: cuda[0]",
+        "Layers 16-47: cpu"
+      ],
+      "device_map_run2": [
+        "Layers 0-14: cuda[0]",
+        "Layers 15-47: cpu"
+      ]
+    },
+    {
+      "config": "C1",
+      "prompt_id": "q29-code-explain",
+      "first_logprob_diff_idx": 0,
+      "first_token_diff_idx": 21,
+      "gap_prev_run1": null,
+      "gap_prev_run2": null,
+      "gap_at_div_run1": 0.0,
+      "gap_at_div_run2": 0.5000000596046448,
+      "max_logprob_diff_before_div": 0.18906837701797485,
+      "device_map_run1": [
+        "Layers 0-15: cuda[0]",
+        "Layers 16-47: cpu"
+      ],
+      "device_map_run2": [
+        "Layers 0-14: cuda[0]",
+        "Layers 15-47: cpu"
+      ]
+    },
+    {
+      "config": "C1",
+      "prompt_id": "q32-refusal-boundary",
+      "first_logprob_diff_idx": 0,
+      "first_token_diff_idx": 23,
+      "gap_prev_run1": null,
+      "gap_prev_run2": null,
+      "gap_at_div_run1": 0.2500000596046448,
+      "gap_at_div_run2": 0.0,
+      "max_logprob_diff_before_div": 0.05014142394065857,
+      "device_map_run1": [
+        "Layers 0-15: cuda[0]",
+        "Layers 16-47: cpu"
+      ],
+      "device_map_run2": [
+        "Layers 0-14: cuda[0]",
+        "Layers 15-47: cpu"
+      ]
+    },
+    {
+      "config": "C2",
+      "prompt_id": "q04-units",
+      "first_logprob_diff_idx": null,
+      "first_token_diff_idx": null,
+      "gap_prev_run1": null,
+      "gap_prev_run2": null,
+      "gap_at_div_run1": null,
+      "gap_at_div_run2": null,
+      "max_logprob_diff_before_div": 0.0,
+      "device_map_run1": [
+        "Layers 0-14: cuda[0]",
+        "Layers 15-47: cpu"
+      ],
+      "device_map_run2": [
+        "Layers 0-14: cuda[0]",
+        "Layers 15-47: cpu"
+      ]
+    },
+    {
+      "config": "C2",
+      "prompt_id": "q07-sql",
+      "first_logprob_diff_idx": null,
+      "first_token_diff_idx": null,
+      "gap_prev_run1": null,
+      "gap_prev_run2": null,
+      "gap_at_div_run1": null,
+      "gap_at_div_run2": null,
+      "max_logprob_diff_before_div": 0.0,
+      "device_map_run1": [
+        "Layers 0-14: cuda[0]",
+        "Layers 15-47: cpu"
+      ],
+      "device_map_run2": [
+        "Layers 0-14: cuda[0]",
+        "Layers 15-47: cpu"
+      ]
+    },
+    {
+      "config": "C2",
+      "prompt_id": "q09-bug",
+      "first_logprob_diff_idx": null,
+      "first_token_diff_idx": null,
+      "gap_prev_run1": null,
+      "gap_prev_run2": null,
+      "gap_at_div_run1": null,
+      "gap_at_div_run2": null,
+      "max_logprob_diff_before_div": 0.0,
+      "device_map_run1": [
+        "Layers 0-14: cuda[0]",
+        "Layers 15-47: cpu"
+      ],
+      "device_map_run2": [
+        "Layers 0-14: cuda[0]",
+        "Layers 15-47: cpu"
+      ]
+    },
+    {
+      "config": "C2",
+      "prompt_id": "q10-fr-explain",
+      "first_logprob_diff_idx": null,
+      "first_token_diff_idx": null,
+      "gap_prev_run1": null,
+      "gap_prev_run2": null,
+      "gap_at_div_run1": null,
+      "gap_at_div_run2": null,
+      "max_logprob_diff_before_div": 0.0,
+      "device_map_run1": [
+        "Layers 0-14: cuda[0]",
+        "Layers 15-47: cpu"
+      ],
+      "device_map_run2": [
+        "Layers 0-14: cuda[0]",
+        "Layers 15-47: cpu"
+      ]
+    },
+    {
+      "config": "C2",
+      "prompt_id": "q11-fr-translate",
+      "first_logprob_diff_idx": null,
+      "first_token_diff_idx": null,
+      "gap_prev_run1": null,
+      "gap_prev_run2": null,
+      "gap_at_div_run1": null,
+      "gap_at_div_run2": null,
+      "max_logprob_diff_before_div": 0.0,
+      "device_map_run1": [
+        "Layers 0-14: cuda[0]",
+        "Layers 15-47: cpu"
+      ],
+      "device_map_run2": [
+        "Layers 0-14: cuda[0]",
+        "Layers 15-47: cpu"
+      ]
+    },
+    {
+      "config": "C2",
+      "prompt_id": "q19-summary-tech",
+      "first_logprob_diff_idx": null,
+      "first_token_diff_idx": null,
+      "gap_prev_run1": null,
+      "gap_prev_run2": null,
+      "gap_at_div_run1": null,
+      "gap_at_div_run2": null,
+      "max_logprob_diff_before_div": 0.0,
+      "device_map_run1": [
+        "Layers 0-14: cuda[0]",
+        "Layers 15-47: cpu"
+      ],
+      "device_map_run2": [
+        "Layers 0-14: cuda[0]",
+        "Layers 15-47: cpu"
+      ]
+    },
+    {
+      "config": "C2",
+      "prompt_id": "q27-science",
+      "first_logprob_diff_idx": null,
+      "first_token_diff_idx": null,
+      "gap_prev_run1": null,
+      "gap_prev_run2": null,
+      "gap_at_div_run1": null,
+      "gap_at_div_run2": null,
+      "max_logprob_diff_before_div": 0.0,
+      "device_map_run1": [
+        "Layers 0-14: cuda[0]",
+        "Layers 15-47: cpu"
+      ],
+      "device_map_run2": [
+        "Layers 0-14: cuda[0]",
+        "Layers 15-47: cpu"
+      ]
+    },
+    {
+      "config": "C2",
+      "prompt_id": "q29-code-explain",
+      "first_logprob_diff_idx": null,
+      "first_token_diff_idx": null,
+      "gap_prev_run1": null,
+      "gap_prev_run2": null,
+      "gap_at_div_run1": null,
+      "gap_at_div_run2": null,
+      "max_logprob_diff_before_div": 0.0,
+      "device_map_run1": [
+        "Layers 0-14: cuda[0]",
+        "Layers 15-47: cpu"
+      ],
+      "device_map_run2": [
+        "Layers 0-14: cuda[0]",
+        "Layers 15-47: cpu"
+      ]
+    },
+    {
+      "config": "C2",
+      "prompt_id": "q32-refusal-boundary",
+      "first_logprob_diff_idx": null,
+      "first_token_diff_idx": null,
+      "gap_prev_run1": null,
+      "gap_prev_run2": null,
+      "gap_at_div_run1": null,
+      "gap_at_div_run2": null,
+      "max_logprob_diff_before_div": 0.0,
+      "device_map_run1": [
+        "Layers 0-14: cuda[0]",
+        "Layers 15-47: cpu"
+      ],
+      "device_map_run2": [
+        "Layers 0-14: cuda[0]",
+        "Layers 15-47: cpu"
+      ]
+    },
+    {
+      "config": "D",
+      "prompt_id": "q04-units",
+      "first_logprob_diff_idx": 1,
+      "first_token_diff_idx": 27,
+      "gap_prev_run1": 17.56249940395338,
+      "gap_prev_run2": 17.06249940395338,
+      "gap_at_div_run1": 0.25,
+      "gap_at_div_run2": 0.0,
+      "max_logprob_diff_before_div": 0.3053390681743622,
+      "device_map_run1": [
+        "Layers 0-14: cuda[0]",
+        "Layers 15-47: cpu"
+      ],
+      "device_map_run2": [
+        "Layers 0-15: cuda[0]",
+        "Layers 16-47: cpu"
+      ]
+    },
+    {
+      "config": "D",
+      "prompt_id": "q07-sql",
+      "first_logprob_diff_idx": 0,
+      "first_token_diff_idx": 16,
+      "gap_prev_run1": null,
+      "gap_prev_run2": null,
+      "gap_at_div_run1": 1.0,
+      "gap_at_div_run2": 0.25,
+      "max_logprob_diff_before_div": 0.06608331203460693,
+      "device_map_run1": [
+        "Layers 0-14: cuda[0]",
+        "Layers 15-47: cpu"
+      ],
+      "device_map_run2": [
+        "Layers 0-15: cuda[0]",
+        "Layers 16-47: cpu"
+      ]
+    },
+    {
+      "config": "D",
+      "prompt_id": "q09-bug",
+      "first_logprob_diff_idx": 0,
+      "first_token_diff_idx": 24,
+      "gap_prev_run1": null,
+      "gap_prev_run2": null,
+      "gap_at_div_run1": 0.2500000596046448,
+      "gap_at_div_run2": 0.7500000596046448,
+      "max_logprob_diff_before_div": 0.20560327172279358,
+      "device_map_run1": [
+        "Layers 0-14: cuda[0]",
+        "Layers 15-47: cpu"
+      ],
+      "device_map_run2": [
+        "Layers 0-15: cuda[0]",
+        "Layers 16-47: cpu"
+      ]
+    },
+    {
+      "config": "D",
+      "prompt_id": "q10-fr-explain",
+      "first_logprob_diff_idx": 0,
+      "first_token_diff_idx": 23,
+      "gap_prev_run1": null,
+      "gap_prev_run2": null,
+      "gap_at_div_run1": 0.0,
+      "gap_at_div_run2": 1.0000000298023224,
+      "max_logprob_diff_before_div": 0.07361003756523132,
+      "device_map_run1": [
+        "Layers 0-14: cuda[0]",
+        "Layers 15-47: cpu"
+      ],
+      "device_map_run2": [
+        "Layers 0-15: cuda[0]",
+        "Layers 16-47: cpu"
+      ]
+    },
+    {
+      "config": "D",
+      "prompt_id": "q11-fr-translate",
+      "first_logprob_diff_idx": 0,
+      "first_token_diff_idx": 10,
+      "gap_prev_run1": null,
+      "gap_prev_run2": null,
+      "gap_at_div_run1": 0.0,
+      "gap_at_div_run2": 0.75,
+      "max_logprob_diff_before_div": 0.07490244507789612,
+      "device_map_run1": [
+        "Layers 0-14: cuda[0]",
+        "Layers 15-47: cpu"
+      ],
+      "device_map_run2": [
+        "Layers 0-15: cuda[0]",
+        "Layers 16-47: cpu"
+      ]
+    },
+    {
+      "config": "D",
+      "prompt_id": "q19-summary-tech",
+      "first_logprob_diff_idx": 0,
+      "first_token_diff_idx": 8,
+      "gap_prev_run1": null,
+      "gap_prev_run2": null,
+      "gap_at_div_run1": 0.0,
+      "gap_at_div_run2": 0.24999994039535522,
+      "max_logprob_diff_before_div": 0.0009254366159439087,
+      "device_map_run1": [
+        "Layers 0-14: cuda[0]",
+        "Layers 15-47: cpu"
+      ],
+      "device_map_run2": [
+        "Layers 0-15: cuda[0]",
+        "Layers 16-47: cpu"
+      ]
+    },
+    {
+      "config": "D",
+      "prompt_id": "q27-science",
+      "first_logprob_diff_idx": 0,
+      "first_token_diff_idx": 29,
+      "gap_prev_run1": null,
+      "gap_prev_run2": null,
+      "gap_at_div_run1": 0.2500000596046448,
+      "gap_at_div_run2": 0.0,
+      "max_logprob_diff_before_div": 0.11942097544670105,
+      "device_map_run1": [
+        "Layers 0-14: cuda[0]",
+        "Layers 15-47: cpu"
+      ],
+      "device_map_run2": [
+        "Layers 0-15: cuda[0]",
+        "Layers 16-47: cpu"
+      ]
+    },
+    {
+      "config": "D",
+      "prompt_id": "q29-code-explain",
+      "first_logprob_diff_idx": 0,
+      "first_token_diff_idx": 21,
+      "gap_prev_run1": null,
+      "gap_prev_run2": null,
+      "gap_at_div_run1": 0.5000000596046448,
+      "gap_at_div_run2": 0.0,
+      "max_logprob_diff_before_div": 0.18906837701797485,
+      "device_map_run1": [
+        "Layers 0-14: cuda[0]",
+        "Layers 15-47: cpu"
+      ],
+      "device_map_run2": [
+        "Layers 0-15: cuda[0]",
+        "Layers 16-47: cpu"
+      ]
+    },
+    {
+      "config": "D",
+      "prompt_id": "q32-refusal-boundary",
+      "first_logprob_diff_idx": 0,
+      "first_token_diff_idx": 23,
+      "gap_prev_run1": null,
+      "gap_prev_run2": null,
+      "gap_at_div_run1": 0.0,
+      "gap_at_div_run2": 0.2500000596046448,
+      "max_logprob_diff_before_div": 0.05014142394065857,
+      "device_map_run1": [
+        "Layers 0-14: cuda[0]",
+        "Layers 15-47: cpu"
+      ],
+      "device_map_run2": [
+        "Layers 0-15: cuda[0]",
+        "Layers 16-47: cpu"
+      ]
+    }
+  ]
+}
