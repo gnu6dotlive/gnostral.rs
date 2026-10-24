@@ -18,7 +18,9 @@ python3 harness/synthetic-moe/run_e2e.py \
 
 The CPU residency path is enabled with `GNOSTRAL_EXPERT_RESIDENCY_CPU=1`,
 `GNOSTRAL_EXPERT_CACHE_BYTES=1` and a profile with an empty ranking (the script writes it).
-On a GPU host, drop `--cpu` from the capture tool and use a real profile instead.
+`--device cuda` drops `--cpu` from the capture tool (default `cpu`). The plan also carries a `driver_probe`
+that scans the kernel log for `NVRM: Xid` and prints `GNOSTRAL_DRIVER NO_XID|XID`; the bench refuses a
+GPU comparison without `NO_XID`.
 
 What this proves and what it does not: see
 [`evidence/runs/synthetic-moe-e2e-20261023.json`](../../evidence/runs/synthetic-moe-e2e-20261023.json).

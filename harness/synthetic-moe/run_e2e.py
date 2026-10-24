@@ -38,6 +38,11 @@ LANES = {
 }
 
 
+# Kernel-log scan for NVIDIA Xid faults since boot; the bench refuses a GPU comparison otherwise.
+DRIVER_PROBE = ("if journalctl -k -b --no-pager 2>/dev/null | grep -q 'NVRM: Xid'; "
+                "then echo GNOSTRAL_DRIVER XID; else echo GNOSTRAL_DRIVER NO_XID; fi")
+
+
 def sha256_file(path: Path) -> str:
     h = hashlib.sha256()
     with path.open("rb") as handle:
@@ -70,8 +75,10 @@ def capture(args: argparse.Namespace, out: Path, lane: str, dest: Path) -> subpr
         "--manifest", str(args.manifest), "--promptset-sha256", manifest_hash(args.manifest),
         "--engine", lane, "--binary-sha256", sha256_file(Path(args.capture_bin)),
         "--model-sha256", sha256_file(model), "--max-tokens", str(args.max_tokens),
-        "--out", str(dest), "--cpu",
+        "--out", str(dest),
     ]
+    if args.device == "cpu":
+        cmd.append("--cpu")
     return subprocess.run(cmd, env=residency_env(out, lane), capture_output=True, text=True)
 
 
@@ -102,6 +109,7 @@ def main() -> int:
     parser.add_argument("--manifest", type=Path, default=DEFAULT_MANIFEST)
     parser.add_argument("--max-tokens", type=int, default=32)
     parser.add_argument("--repetitions", type=int, default=3)
+    parser.add_argument("--device", choices=("cpu", "cuda"), default="cpu")
     parser.add_argument("--lane", choices=sorted(LANES), help=argparse.SUPPRESS)
     args = parser.parse_args()
     if args.lane:
@@ -127,7 +135,7 @@ def main() -> int:
         "run_id": "synthetic-moe-e2e",
         "date": "2026-10-23",
         "protocol": {
-            "id": "synthetic-moe-cpu-smoke",
+            "id": f"synthetic-moe-{args.device}-smoke",
             "sha256": hashlib.sha256(json.dumps({"manifest": manifest_hash(args.manifest),
                                                  "max_tokens": args.max_tokens}).encode()).hexdigest(),
             "repetitions": args.repetitions,
@@ -137,6 +145,7 @@ def main() -> int:
             "sampling": {"temperature": 0, "seed": 0, "n_predict": args.max_tokens, "repeat_penalty": 1},
         },
         "warmup_runs": 1,
+        "driver_probe": ["/bin/sh", "-c", DRIVER_PROBE],
         "lanes": [
             {
                 "engine": lane,
@@ -144,11 +153,11 @@ def main() -> int:
                 "expected_binary_sha256": sha256_file(Path(args.capture_bin)),
                 "model_path": str(model),
                 "expected_model_sha256": model_sha,
-                "host_fingerprint": f"cpu:{os.uname().machine}:{os.cpu_count()}",
+                "host_fingerprint": f"{args.device}:{os.uname().machine}:{os.cpu_count()}",
                 "argv": [sys.executable, "-I", str(Path(__file__).resolve()), "--lane", lane,
                          "--capture-bin", args.capture_bin, "--bench-bin", args.bench_bin,
                          "--out", str(out), "--manifest", str(args.manifest),
-                         "--max-tokens", str(args.max_tokens)],
+                         "--max-tokens", str(args.max_tokens), "--device", args.device],
             }
             for lane in LANES
         ],
