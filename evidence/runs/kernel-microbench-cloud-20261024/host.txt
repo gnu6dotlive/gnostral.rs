@@ -1,0 +1,8 @@
+4
+model name	: Intel(R) Xeon(R) Processor @ 2.10GHz
+cache size	: 266240 KB
+Thread(s) per core:                      1
+Core(s) per socket:                      4
+Socket(s):                               1
+L2 cache:                                8 MiB (4 instances)
+L3 cache:                                260 MiB (1 instance)

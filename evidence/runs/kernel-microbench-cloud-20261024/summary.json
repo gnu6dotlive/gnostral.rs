@@ -1,0 +1,128 @@
+{
+  "schema": "gnostral.rs/evidence-summary/1",
+  "date": "2026-10-24",
+  "claim_class": "OBSERVED",
+  "host": [
+    "4",
+    "model name\t: Intel(R) Xeon(R) Processor @ 2.10GHz",
+    "cache size\t: 266240 KB",
+    "Thread(s) per core:                      1",
+    "Core(s) per socket:                      4",
+    "Socket(s):                               1",
+    "L2 cache:                                8 MiB (4 instances)",
+    "L3 cache:                                260 MiB (1 instance)"
+  ],
+  "scope": "Qwen3-30B-A3B expert geometry (hidden 2048, inter 768, Q2_K gate/up, Q3_K down), single-token decode with 8 experts, synthetic weights. A cloud VM, not the lab host: its 260 MiB L3 holds all 128 experts, so it cannot show the RAM-bound behaviour of a desktop CPU.",
+  "ours": {
+    "binary": "crates/gnostral-cpu-kernels kquant_bench (release, Numerics::Native unless noted)",
+    "ffn_layer_us": {
+      "threads=1,experts=fixed 8": {
+        "median_us": 5924.561,
+        "min_us": 5499.076,
+        "max_us": 6154.686,
+        "n": 30
+      },
+      "threads=1,experts=rotating from 128": {
+        "median_us": 5737.319,
+        "min_us": 5369.359,
+        "max_us": 6271.962,
+        "n": 30
+      },
+      "threads=2,experts=fixed 8": {
+        "median_us": 3231.1735,
+        "min_us": 2943.285,
+        "max_us": 7260.742,
+        "n": 30
+      },
+      "threads=2,experts=rotating from 128": {
+        "median_us": 2934.6645,
+        "min_us": 2769.757,
+        "max_us": 3112.836,
+        "n": 30
+      },
+      "threads=4,experts=fixed 8": {
+        "median_us": 2027.436,
+        "min_us": 1875.081,
+        "max_us": 4861.343,
+        "n": 30
+      },
+      "threads=4,experts=rotating from 128": {
+        "median_us": 2019.4615,
+        "min_us": 1900.86,
+        "max_us": 2352.276,
+        "n": 30
+      }
+    },
+    "pool_dispatch_us": {
+      "1": 0.003,
+      "2": 27.0375,
+      "4": 67.5185
+    },
+    "row_dot": [
+      {
+        "isa": "avx512bw",
+        "numerics": "native",
+        "q2k_median_ps_per_block": 19350.5,
+        "q3k_median_ps_per_block": 30884
+      },
+      {
+        "isa": "avx2",
+        "numerics": "native",
+        "q2k_median_ps_per_block": 37231,
+        "q3k_median_ps_per_block": 41355
+      },
+      {
+        "isa": "avx512bw",
+        "numerics": "candle",
+        "q2k_median_ps_per_block": 58044,
+        "q3k_median_ps_per_block": 34258
+      },
+      {
+        "isa": "avx2",
+        "numerics": "candle",
+        "q2k_median_ps_per_block": 57685,
+        "q3k_median_ps_per_block": 37938.5
+      }
+    ],
+    "binary_sha256": "97f9eb6553e83fb70b97e3cb566bcc8541f3baf5c72c38032210ea9478dca9d6",
+    "source": "crates/gnostral-cpu-kernels/src/bin/kquant_bench.rs as committed with this receipt (rustfmt ran after the measurement; no semantic change)"
+  },
+  "ggml": {
+    "tool": "llama.cpp b11857 test-backend-ops perf -o MUL_MAT_ID -b CPU, Q2_K/Q3_K cases added by test-backend-ops-gnostral.diff",
+    "threads": "N_THREADS/2 = 2 (fixed by the tool)",
+    "experts": "ids 0..7 shuffled every iteration, i.e. the same 8 experts (cache-hot, like ours with fixed experts)",
+    "us_per_run": {
+      "q2_K m=768 n=1 k=2048": [
+        281.24,
+        279.63
+      ],
+      "q3_K m=2048 n=1 k=768": [
+        466.09,
+        454.3
+      ],
+      "q2_K m=768 n=8 k=2048": [
+        2217.37,
+        2567.3
+      ],
+      "q3_K m=2048 n=8 k=768": [
+        4635.49,
+        3729.1
+      ]
+    },
+    "layer_n1_us_gate_up_down": [
+      1028.57,
+      1013.56
+    ],
+    "binary_sha256": "6f08dd2274b06443aaaeb1658d189fefcce0d959724a315d9617a35b258cfce6"
+  },
+  "comparisons": {
+    "layer_decode_2_threads_us": {
+      "ours_fixed_experts": 3231.1735,
+      "ggml_sum_of_three_matmuls": [
+        1028.6,
+        1013.6
+      ]
+    },
+    "note": "ggml numbers exclude the SwiGLU and activation re-quantisation between up and down; ours include them"
+  }
+}

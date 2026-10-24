@@ -216,6 +216,38 @@ Rules:
   Qwen3-30B-A3B.
 - **Evidence:** `evidence/runs/synthetic-moe-four-lane-cpu-20261024/summary.json`.
 
+### F-021 · 2026-10-24 · Our expert kernel is about 3x slower than ggml's at decode shapes
+
+- **Class:** OBSERVED on a cloud VM (4-core Xeon with AVX-512, 260 MiB L3), not on the lab host.
+- **What:** Qwen3-30B-A3B expert geometry, one token, 8 experts, 2 threads on both sides, the same 8
+  experts every iteration on both sides (`test-backend-ops` uses ids 0..7): our `grouped_expert_ffn`
+  3.23 ms median per layer; ggml's three `MUL_MAT_ID` (gate, up, down) about 1.01-1.03 ms. Per block,
+  single thread: our `Q2_K` dot 19.4 ns, `Q3_K` 30.9 ns; ggml at 2 threads works out to roughly 10 and
+  19 ns per block per thread.
+- **Limits:** ggml's figure excludes SwiGLU and the activation re-quantisation between up and down; this
+  host's L3 holds all 128 experts, so neither side is memory-bound here as it would be on a desktop CPU.
+- **Evidence:** `evidence/runs/kernel-microbench-cloud-20261024/summary.json` (raw samples, ggml output,
+  the two-line `test-backend-ops` diff that adds the `Q2_K`/`Q3_K` cases).
+
+### F-022 · 2026-10-24 · Waking the thread pool costs tens of microseconds per dispatch
+
+- **Class:** OBSERVED (same VM).
+- **What:** `Pool::run` over trivial tasks: 27 us at 2 threads, 68 us at 4. The grouped kernel dispatches
+  twice per MoE layer per token, so 48 layers at 4 threads would spend about 6.5 ms per token waking
+  threads, against a 28.6 ms budget per token at the M1 target of 35 tok/s.
+- **Next:** the second Phase 2 hypothesis now has a number on this host; it needs the lab's timeline
+  (patch `0009`) before any change, and any change keeps the bit-equality tests.
+
+### F-023 · 2026-10-24 · The engine's bit-exact numerics path is 3x slower than the native one for Q2_K
+
+- **Class:** OBSERVED (same VM).
+- **What:** per `Q2_K` block, `Numerics::CandleCompat` 58 ns against `Native` 19 ns (AVX-512 integer part
+  in both); `Q3_K` 34 vs 31 ns. The candle-compatible combination runs its eight lanes and the `mins` x
+  `bsums` products in scalar code per block. The engine's `gnostral` lane uses `CandleCompat` (F-002).
+- **Next:** candle itself does that combination with `_mm256_fmadd_ps` on the same eight lanes, so a
+  vectorised version can stay bit-identical; it is a Phase 3 candidate, to be done with the existing
+  intrinsics-transcription tests as the gate.
+
 ## Evidence not yet in the repository
 
 These directories exist on the lab disk only. Until they are committed they are not program

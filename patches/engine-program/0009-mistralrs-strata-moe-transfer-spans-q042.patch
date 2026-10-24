@@ -1,0 +1,162 @@
+From 9f1eab0cfc1b8c61030e4b53af851ab9eedc32fd Mon Sep 17 00:00:00 2001
+From: Jordan <dev.in@gnu6.live>
+Date: Sat, 24 Oct 2026 16:20:34 +0000
+Subject: [PATCH] feat(trace): GPU wait, host transfer and MoE bookkeeping
+ spans in the grouped executor
+
+With GNOSTRAL_TRACE=1 the grouped executor times the device-to-host copy of
+the hidden states, the copies of resident-expert rows and outputs, the copy of
+the layer output back to the device, and the routing plan, gather and scatter.
+Before each host read it drains the device queue (only while a timeline is
+recording) so the copy is not charged with the attention kernels it would wait
+for. Token- and logprob-neutral: bit-identical captures with tracing on and off.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_016D4Xz7aLLGu873oZNF6vk4
+---
+ mistralrs-core/src/gnostral_trace.rs        | 19 ++++++++++-
+ mistralrs-core/src/moe/experts/residency.rs | 35 ++++++++++++++++++---
+ 2 files changed, 49 insertions(+), 5 deletions(-)
+
+diff --git a/mistralrs-core/src/gnostral_trace.rs b/mistralrs-core/src/gnostral_trace.rs
+index 4f0f95b..38e4845 100644
+--- a/mistralrs-core/src/gnostral_trace.rs
++++ b/mistralrs-core/src/gnostral_trace.rs
+@@ -41,6 +41,14 @@ mod imp {
+             .as_ref()
+     }
+ 
++    /// True while a timeline is being recorded; gates measurement-only synchronisation.
++    #[cfg_attr(not(feature = "gnostral-expert-residency"), allow(dead_code))]
++    pub(crate) fn active() -> bool {
++        state()
++            .and_then(|s| s.lock().ok())
++            .is_some_and(|g| g.begun && !g.done)
++    }
++
+     #[inline]
+     pub(crate) fn start() -> Option<u64> {
+         let guard = state()?.lock().ok()?;
+@@ -168,12 +176,21 @@ mod imp {
+ #[cfg(not(feature = "gnostral-trace"))]
+ mod imp {
+     #[derive(Clone, Copy)]
++    #[cfg_attr(not(feature = "gnostral-expert-residency"), allow(dead_code))]
+     pub(crate) enum Phase {
+         Schedule,
+         Forward,
+-        #[cfg_attr(not(feature = "gnostral-expert-residency"), allow(dead_code))]
+         CpuExpert,
+         Sample,
++        GpuWait,
++        HostTransfer,
++        MoeBookkeeping,
++    }
++
++    #[inline(always)]
++    #[cfg_attr(not(feature = "gnostral-expert-residency"), allow(dead_code))]
++    pub(crate) fn active() -> bool {
++        false
+     }
+ 
+     #[inline(always)]
+diff --git a/mistralrs-core/src/moe/experts/residency.rs b/mistralrs-core/src/moe/experts/residency.rs
+index 0891ecd..d1b988e 100644
+--- a/mistralrs-core/src/moe/experts/residency.rs
++++ b/mistralrs-core/src/moe/experts/residency.rs
+@@ -765,12 +765,23 @@ impl ExpertResidencyRuntime {
+         activation: &impl Fn(&Tensor) -> Result<Tensor>,
+         act_f32: Option<fn(f32) -> f32>,
+     ) -> Result<Tensor> {
++        use crate::gnostral_trace::{self as trace, Phase};
+         let (tokens, hidden) = xs.dims2()?;
++        // Measurement only: with tracing on, drain the device queue first so the copy below is
++        // timed as a copy, not as the attention kernels it would otherwise wait for.
++        let wait = trace::start();
++        if trace::active() {
++            xs.device().synchronize()?;
++        }
++        trace::stop(Phase::GpuWait, wait);
++        let copy = trace::start();
+         let flat = xs
+             .to_dtype(DType::F32)?
+             .to_device(&Device::Cpu)?
+             .flatten_all()?
+             .to_vec1::<f32>()?;
++        trace::stop(Phase::HostTransfer, copy);
++        let book = trace::start();
+         let exec_routes = routes
+             .iter()
+             .map(|r| {
+@@ -801,6 +812,7 @@ impl ExpertResidencyRuntime {
+             },
+         )
+         .map_err(plan_error)?;
++        trace::stop(Phase::MoeBookkeeping, book);
+         let mut contributions = vec![Vec::new(); plan.groups().len()];
+ 
+         let mut device_parts = Vec::new();
+@@ -815,8 +827,10 @@ impl ExpertResidencyRuntime {
+                         layer: group.key.layer,
+                         expert: group.key.expert,
+                     }];
++                    let copy = trace::start();
+                     let rows = Tensor::from_vec(rows, (group.len, hidden), &Device::Cpu)?
+                         .to_device(&self.device)?;
++                    trace::stop(Phase::HostTransfer, copy);
+                     let out = match self.executor.gpu_rows {
+                         GpuRows::Batched => weights.compute(&rows, activation)?,
+                         GpuRows::PerRow => {
+@@ -851,7 +865,7 @@ impl ExpertResidencyRuntime {
+             }
+             (CpuKernel::Candle, _) => None,
+         };
+-        let cpu_span = crate::gnostral_trace::start();
++        let cpu_span = trace::start();
+         if let Some(act) = gnostral.filter(|_| !host_groups.is_empty()) {
+             let outputs = gnostral_host_ffn(host, &host_groups, hidden, act)?;
+             for (group, out) in host_groups.iter().zip(outputs) {
+@@ -867,14 +881,22 @@ impl ExpertResidencyRuntime {
+             }
+         }
+ 
+-        crate::gnostral_trace::stop(crate::gnostral_trace::Phase::CpuExpert, cpu_span);
++        trace::stop(Phase::CpuExpert, cpu_span);
+ 
+         if !device_parts.is_empty() {
+-            let joined = Tensor::cat(&device_parts, 0)?
++            let joined = Tensor::cat(&device_parts, 0)?;
++            let wait = trace::start();
++            if trace::active() {
++                joined.device().synchronize()?;
++            }
++            trace::stop(Phase::GpuWait, wait);
++            let copy = trace::start();
++            let joined = joined
+                 .to_device(&Device::Cpu)?
+                 .to_dtype(DType::F32)?
+                 .flatten_all()?
+                 .to_vec1::<f32>()?;
++            trace::stop(Phase::HostTransfer, copy);
+             let mut offset = 0;
+             for (slot, len) in device_slots {
+                 contributions[slot] = joined[offset..offset + len * hidden].to_vec();
+@@ -882,9 +904,14 @@ impl ExpertResidencyRuntime {
+             }
+         }
+ 
++        let book = trace::start();
+         let output = exec::scatter_ordered(&plan, &exec_routes, &contributions, tokens, hidden)
+             .map_err(plan_error)?;
+-        Tensor::from_vec(output, (tokens, hidden), xs.device())?.to_dtype(xs.dtype())
++        trace::stop(Phase::MoeBookkeeping, book);
++        let copy = trace::start();
++        let out = Tensor::from_vec(output, (tokens, hidden), xs.device())?.to_dtype(xs.dtype());
++        trace::stop(Phase::HostTransfer, copy);
++        out
+     }
+ }
+ 
+-- 
+2.43.0
+
