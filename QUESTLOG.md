@@ -70,12 +70,12 @@ DeepInfer/provider follow-ons; Q-013-D→Q-016 remain the supervisor gates.
 
 | ID | Quest | State | Scope (one line) |
 | --- | --- | --- | --- |
-| Q-026 | [MOE-EXECUTOR-02](quests/Q-026-MOE-EXECUTOR-02.md) | PROPOSED | Deterministic route partitioner + grouped executor + scatter-add; policy crate landed; engine patch `patches/engine-program/0001` CPU-tested (bit-equal to per-route), no GPU run |
-| Q-027 | [RESIDENCY-DYNAMIC-01](quests/Q-027-RESIDENCY-DYNAMIC-01.md) | PROPOSED | Histogram-driven admission/eviction with leases, segmented allocator, expert/KV budget arbitration; policy and arithmetic landed offline, no engine hook |
+| Q-026 | [MOE-EXECUTOR-02](quests/Q-026-MOE-EXECUTOR-02.md) | PROPOSED | Deterministic route partitioner + grouped executor + scatter-add; policy crate landed; engine patch `0001` CPU-tested (bit-equal to per-route); CUDA runs on synthetic fixtures; first real-model run stopped on a placement defect (F-009..F-013) |
+| Q-027 | [RESIDENCY-DYNAMIC-01](quests/Q-027-RESIDENCY-DYNAMIC-01.md) | PROPOSED | Histogram-driven admission/eviction with leases, segmented allocator, expert/KV budget arbitration; policy and arithmetic landed offline; residency-aware device map (patches 0006/0007, lab check pending); no dynamic engine hook |
 | Q-028 | [PAGED-OFFLOAD-01](quests/Q-028-PAGED-OFFLOAD-01.md) | PROPOSED | Paged KV + continuous batching for the all-GPU-layer, host-expert map; hybrid KV fallback; block pool and scheduler policy landed offline |
 | Q-029 | [CPU-KERNEL-Q8-01](quests/Q-029-CPU-KERNEL-Q8-01.md) | PROPOSED | Q8_0/Q8_K activations, fused gate/up, batched quantized CPU GEMM, AVX2/AVX-512, parity against ggml; Q2_K/Q3_K kernels landed (bit-identical ISAs, thread-invariant, engine lane bit-equal to candle), no benchmark run |
-| Q-030 | [QUALITY-PARITY-01](quests/Q-030-QUALITY-PARITY-01.md) | PROPOSED | Token-parity, KL, batch-invariance and sampler oracle; the gate every engine PR must pass; frozen 32-prompt set, thresholds, ledger and gate receipt landed, no capture yet |
-| Q-031 | [ENGINE-PERF-01](quests/Q-031-ENGINE-PERF-01.md) | PROPOSED | One-command frozen-protocol runner, Pareto table, refuses un-pinned identities, keeps all samples; runner and receipt encoder landed, no real lane run |
+| Q-030 | [QUALITY-PARITY-01](quests/Q-030-QUALITY-PARITY-01.md) | PROPOSED | Token-parity, KL, batch-invariance and sampler oracle; the gate every engine PR must pass; frozen 32-prompt set, thresholds, ledger and gate receipt landed; real-model captures used for diagnostics only, no gate receipt |
+| Q-031 | [ENGINE-PERF-01](quests/Q-031-ENGINE-PERF-01.md) | PROPOSED | One-command frozen-protocol runner, Pareto table, refuses un-pinned identities, keeps all samples; runner and receipt encoder landed; CUDA runs on synthetic fixtures; real-model run stopped by the parity gate (F-009) |
 | Q-032 | [RESERVED](quests/Q-032-RESERVED.md) | PROPOSED | Reserved number; no workstream, deliverable or gate assigned |
 | Q-033 | [MODEL-MATRIX-01](quests/Q-033-MODEL-MATRIX-01.md) | PROPOSED | Per-family and per-format functional receipts, only after speed and quality gates |
 | Q-034 | [PACKAGING-01](quests/Q-034-PACKAGING-01.md) | PROPOSED | Single `gnostral serve` binary, model manager, profiles, reproducible builds |
@@ -92,7 +92,10 @@ DeepInfer/provider follow-ons; Q-013-D→Q-016 remain the supervisor gates.
 CPU-only pieces exist for Q-026, Q-027, Q-028, Q-029, Q-030, Q-031, Q-038, Q-039, Q-040, Q-041 and
 Q-042 (crates `gnostral-moe-exec`, `gnostral-expert-residency`, `gnostral-cpu-kernels`,
 `gnostral-memory-plan`, `gnostral-scheduler`, `gnostral-supervisor`, `gnostral-trace`, harnesses
-`quality` and `bench`; see [ENGINE_PROGRAM.md](docs/ENGINE_PROGRAM.md#current-state)). None is
-integrated into the engine, none has a measurement or receipt, and every quest stays PROPOSED. Q-037
+`quality` and `bench`; see [ENGINE_PROGRAM.md](docs/ENGINE_PROGRAM.md#current-state)). Engine patches
+`0001`-`0007` integrate the executor, kernel, timers, profile recording and capture tool; CUDA runs exist
+on synthetic fixtures, and the first real-model run was stopped by the parity gate on a placement
+defect now being fixed ([FINDINGS.md](docs/FINDINGS.md)). No real-model measurement qualifies, and every
+quest stays PROPOSED. Q-037
 is deliberately not started (its gate needs a Q-042 profile first); Q-033/Q-034 wait for W6.
 Uncommitted worktree files are not program state.

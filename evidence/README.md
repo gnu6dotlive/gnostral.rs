@@ -13,3 +13,12 @@ Q-013-A [evidence-bound probe plans](runs/gnostral-q013-exact-probe-plans-202610
 Q-013B's [CPU fixture containment receipt](runs/gnostral-q013b-fixture-process-20261010.json) contains eight bounded-process observations, an actual negative outside-scope check, and digests of private source logs. It does not qualify GPU reclaim, real inference, arbitrary executable admission or production supervision.
 
 Q-013C's [real-dense single-server receipt](runs/gnostral-q013c-real-dense-single-server-20261010.json) is from an actual bounded Qwen2.5-Coder inference and an independent local rehash/oracle audit. It excludes the privately retained engine log and full response. It does not qualify multi-family routing, authenticated third-party semantic witnesses, or production.
+
+## Engine program (from 2026-10-23)
+
+Context and interpretation for each of these is in [docs/FINDINGS.md](../docs/FINDINGS.md); a receipt here does not by itself support a performance claim.
+
+- [Vendored engine inventory](runs/mistralrs-strata-vendor-20261023.json): the engine tree the patch series applies to (public mistral.rs `24dbf5c` plus the strata integration patch, 1,889 files byte-identical).
+- [Synthetic end to end, CPU](runs/synthetic-moe-e2e-20261023.json): random 2-layer Qwen3-MoE fixture; executor and kernel token parity, trace neutrality, bench plumbing (F-001, F-002). No timing.
+- [Synthetic end to end, CUDA](runs/synthetic-moe-e2e-gpu-20261023.json): random 8-layer fixture on the lab RTX 3070; parity on every run, whole-card VRAM, range-based lane ordering on a noise model (F-007). Layer placement was not recorded.
+- [Reproducibility matrix, Qwen3-30B-A3B](runs/m1-repro-diag2-20261024/repro.md): same prompts captured twice per configuration; divergence follows the number of layers placed on CUDA (F-010).

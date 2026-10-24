@@ -1,7 +1,7 @@
 # Q-026 — MOE-EXECUTOR-02
 
 Review date: 2026-10-23
-State: **PROPOSED** — policy half landed; engine patch series `patches/engine-program/0001` compiled and CPU-tested (grouped output bit-equal to the per-route loop); no CUDA build, no GPU run, no performance measurement.
+State: **PROPOSED** — policy half landed; engine patch `0001` CPU-tested (grouped output bit-equal to the per-route loop). CUDA build and synthetic CUDA runs exist on the lab host ([F-006, F-007](../docs/FINDINGS.md)); the first real-model run stopped on a reproducibility defect in layer placement ([F-009 to F-013](../docs/FINDINGS.md)); no qualified performance measurement.
 Authorization: CPU-only work in `crates/gnostral-moe-exec/`, and only after its gates pass, one
 sequenced patch series inside the pinned `mistralrs-strata` fork. This quest does not authorize a
 new engine dependency, a new CUDA kernel family, a change to the Q-007/Q-008 authority boundary, or

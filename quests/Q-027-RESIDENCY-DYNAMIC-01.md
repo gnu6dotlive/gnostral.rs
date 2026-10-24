@@ -1,7 +1,7 @@
 # Q-027 — RESIDENCY-DYNAMIC-01
 
 Review date: 2026-10-23
-State: **PROPOSED** — dynamic admission/eviction policy and budget arithmetic landed offline (`gnostral-expert-residency::dynamic`, `gnostral-memory-plan`); engine patch `0003` records observed expert demand as a loadable profile (synthetic fixture only); dynamic admission not wired into the engine; no measurement exists.
+State: **PROPOSED** — dynamic admission/eviction policy and budget arithmetic landed offline (`gnostral-expert-residency::dynamic`, `gnostral-memory-plan`); engine patch `0003` records observed expert demand as a loadable profile (synthetic fixture only); engine patches `0006`/`0007` make the automatic device map stop counting host-loaded expert stacks ([F-011 to F-013](../docs/FINDINGS.md), lab verification pending); dynamic admission not wired into the engine; no measurement exists.
 Authorization: policy work in `crates/gnostral-expert-residency/`, a future
 `crates/gnostral-memory-plan/`, and residency integration in
 `mistralrs-core/src/moe/experts/residency.rs`. This quest does not authorize KV or expert placement

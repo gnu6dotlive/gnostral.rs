@@ -15,6 +15,7 @@
 | See the full engineering sequence | [QUESTLOG](../QUESTLOG.md) |
 | Know the next implementation milestones | [Roadmap](ROADMAP.md) |
 | Build the best engine for constrained hardware | [Engine program](ENGINE_PROGRAM.md) |
+| Learn what the engine program found, including what it got wrong | [Findings journal](FINDINGS.md) |
 | Understand the boundary between engines and supervisor | [Architecture and authority](ARCHITECTURE.md) |
 | Run tests without a GPU | [Reproducibility guide](REPRODUCIBILITY.md) |
 | Inspect primary measurements and negative results | [Evidence index](../evidence/README.md) |
