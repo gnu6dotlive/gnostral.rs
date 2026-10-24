@@ -1,0 +1,13 @@
+Testing 1 devices
+
+Backend 1/1: CPU
+  Device description: Intel(R) Xeon(R) Processor @ 2.10GHz
+  Device memory: 16091 MB (16091 MB free)
+
+  MUL_MAT_ID(type_a=q2_K,type_b=f32,n_mats=128,n_used=8,b=0,m=768,n=1,k=2048,amax=1.000000,m_v=0,ids_offset=0,skip=0):                  3816 runs -   281.24 us/run -  25.17 MFLOP/run -  89.48 GFLOPS
+  MUL_MAT_ID(type_a=q3_K,type_b=f32,n_mats=128,n_used=8,b=0,m=2048,n=1,k=768,amax=1.000000,m_v=0,ids_offset=0,skip=0):                  2226 runs -   466.09 us/run -  25.17 MFLOP/run -  53.99 GFLOPS
+  MUL_MAT_ID(type_a=q2_K,type_b=f32,n_mats=128,n_used=8,b=0,m=768,n=8,k=2048,amax=1.000000,m_v=0,ids_offset=0,skip=0):                   480 runs -  2217.37 us/run - 201.33 MFLOP/run -  90.80 GFLOPS
+  MUL_MAT_ID(type_a=q3_K,type_b=f32,n_mats=128,n_used=8,b=0,m=2048,n=8,k=768,amax=1.000000,m_v=0,ids_offset=0,skip=0):                   240 runs -  4635.49 us/run - 201.33 MFLOP/run -  43.43 GFLOPS
+  Backend CPU: OK
+1/1 backends passed
+OK

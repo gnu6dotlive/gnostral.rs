@@ -1,7 +1,7 @@
 # Q-029 — CPU-KERNEL-Q8-01
 
 Review date: 2026-10-23
-State: **PROPOSED** — Q2_K/Q3_K x Q8_K kernels landed offline (scalar/AVX2/AVX-512 bit-identical, thread-invariant, grouped expert FFN); callable from the Q-026 grouped executor via `GNOSTRAL_CPU_EXPERT_KERNEL=gnostral` (CPU-tested; since engine patch `0004` bit-equal to candle via `Numerics::CandleCompat`, 32/32 token-identical on the synthetic fixture); on a random 8-layer CUDA fixture its range sat above `per-route` ([F-007](../docs/FINDINGS.md), not a real-model claim); no real-model benchmark has been run.
+State: **PROPOSED** — Q2_K/Q3_K x Q8_K kernels landed offline (scalar/AVX2/AVX-512 bit-identical, thread-invariant, grouped expert FFN); callable from the Q-026 grouped executor via `GNOSTRAL_CPU_EXPERT_KERNEL=gnostral` (CPU-tested; since engine patch `0004` bit-equal to candle via `Numerics::CandleCompat`, 32/32 token-identical on the synthetic fixture); on a random 8-layer CUDA fixture its range sat above `per-route` ([F-007](../docs/FINDINGS.md), not a real-model claim); no real-model benchmark has been run. Microbenchmarks against ggml on a cloud VM put the kernel about 3x behind at decode shapes and show the bit-exact path costing 3x the native one for `Q2_K` ([F-021 to F-023](../docs/FINDINGS.md)).
 Authorization: CPU-only kernel work in the vendored Candle quant path and `mistralrs-quant/`-adjacent
 code, with microbenchmarks on this machine. This quest does not authorize a new CUDA kernel family, a
 quantization change for benchmarking, or a change to block formats on disk.

@@ -35,3 +35,18 @@ profile) and `mixed-experts` (a recording pass with `GNOSTRAL_EXPERT_PROFILE_OUT
 `vram_used_mib` (whole-card peak) and a `GNOSTRAL_DEVICE` line, and **fails** if the capture pid never
 shows up as a compute app. Without `nvidia-smi` the values stay `UNKNOWN`. Lane verdicts compare full
 ranges: overlapping min/max is "inconclusive", never a ranking.
+
+## Identity checks (bench plan v2)
+
+- Every capture runs with the prefix cache off (`--no-prefix-cache`, FINDINGS F-014) and records the
+  top-2 logprobs.
+- On CUDA the capture gets an explicit `--gpu-layers` (default: all layers, override with
+  `--gpu-layers N`); the automatic device map is never used for a benchmark (F-011). The engine's own
+  placement report (patch `0008`) is forwarded as `GNOSTRAL_PLACEMENT` and must equal the plan's
+  `expected_placement` on every run.
+- A lane's first capture in a configuration (the warmup) becomes its reference; every measured capture
+  must match it in tokens and logprob bits (`quality_oracle.py self-repro`).
+- The driver probe is `harness/bench/driver_probe.py`: `NO_XID` only after reading the boot's kernel
+  log with an NVIDIA driver loaded, `UNKNOWN` otherwise (F-016). On a CPU-only host the comparison is
+  therefore refused, by design.
+- `--llama-server` adds a llama.cpp lane (parity class `self`), see [`harness/lanes/`](../lanes/README.md).

@@ -23,6 +23,7 @@ import argparse
 import hashlib
 import json
 import math
+import struct
 import sys
 from dataclasses import dataclass
 from pathlib import Path
@@ -670,6 +671,99 @@ def gate_receipt(
 # ---------------------------------------------------------------------------
 
 
+# ---------------------------------------------------------------------------
+# Self-reproducibility: one lane, two runs, identical bits
+# ---------------------------------------------------------------------------
+
+
+def _float_bits(value: Any, where: str) -> bytes:
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        raise OracleError(f"{where}: logprob must be a number")
+    return struct.pack("<d", float(value))
+
+
+def _load_logprobs(path: str | Path) -> dict[str, list[list[tuple[int, bytes]]]]:
+    raw = json.loads(Path(path).read_text(encoding="utf-8"))
+    if not isinstance(raw, list):
+        raise OracleError("logprobs document must be a list")
+    out: dict[str, list[list[tuple[int, bytes]]]] = {}
+    for entry in raw:
+        if not isinstance(entry, dict) or not isinstance(entry.get("prompt_id"), str):
+            raise OracleError("logprobs entry must name its prompt_id")
+        pid = entry["prompt_id"]
+        if pid in out:
+            raise OracleError(f"duplicate logprobs for prompt {pid!r}")
+        steps = entry.get("steps")
+        if not isinstance(steps, list):
+            raise OracleError(f"logprobs {pid!r} steps must be a list")
+        parsed = []
+        for i, step in enumerate(steps):
+            if not isinstance(step, list) or not step:
+                raise OracleError(f"logprobs {pid!r} step {i} must be a non-empty list")
+            row = []
+            for cand in step:
+                if not (isinstance(cand, list) and len(cand) == 2 and isinstance(cand[0], int)):
+                    raise OracleError(f"logprobs {pid!r} step {i} candidates must be [token, logprob]")
+                row.append((cand[0], _float_bits(cand[1], f"logprobs {pid!r} step {i}")))
+            parsed.append(row)
+        out[pid] = parsed
+    return out
+
+
+def self_reproduction(
+    manifest: PromptSet,
+    first_capture: str | Path,
+    second_capture: str | Path,
+    first_logprobs: str | Path,
+    second_logprobs: str | Path,
+) -> dict[str, Any]:
+    """Does a lane reproduce itself? Tokens and every recorded logprob must be bit-identical.
+
+    `BLOCKED` when the two runs are not the same lane (engine, binary, model) or a pin is
+    missing; a different reported placement is a `FAIL` of kind `placement`.
+    """
+    first = load_capture(first_capture, manifest)
+    second = load_capture(second_capture, manifest)
+    raw_first = json.loads(Path(first_capture).read_text(encoding="utf-8"))["lane"]
+    raw_second = json.loads(Path(second_capture).read_text(encoding="utf-8"))["lane"]
+    result: dict[str, Any] = {"lane": first.lane.engine, "prompts": len(first.captures)}
+    reasons = []
+    identity = lambda raw: {k: v for k, v in raw.items() if k != "placement"}
+    if first.lane != second.lane or identity(raw_first) != identity(raw_second):
+        reasons.append("the two captures are not the same lane identity")
+    if first.lane.binary_sha256 is None or first.lane.model_sha256 is None:
+        reasons.append("binary and model must both be pinned")
+    if reasons:
+        result.update(verdict=VERDICT_BLOCKED, reasons=reasons, first_difference=None)
+        return result
+
+    def fail(prompt_id: str | None, kind: str, index: int | None) -> dict[str, Any]:
+        result.update(verdict="FAIL", reasons=[],
+                      first_difference={"prompt_id": prompt_id, "kind": kind, "index": index})
+        return result
+
+    if raw_first.get("placement") != raw_second.get("placement"):
+        return fail(None, "placement", None)
+    lp_first, lp_second = _load_logprobs(first_logprobs), _load_logprobs(second_logprobs)
+    for prompt_id in sorted(first.captures):
+        a, b = first.tokens(prompt_id), second.tokens(prompt_id)
+        index = first_divergence(a, b)
+        if index is None and len(a) != len(b):
+            index = min(len(a), len(b))
+        steps_a, steps_b = lp_first.get(prompt_id), lp_second.get(prompt_id)
+        if steps_a is None or steps_b is None:
+            raise OracleError(f"logprobs missing for prompt {prompt_id!r}")
+        lp_index = next((i for i, (x, y) in enumerate(zip(steps_a, steps_b)) if x != y), None)
+        if lp_index is None and len(steps_a) != len(steps_b):
+            lp_index = min(len(steps_a), len(steps_b))
+        if lp_index is not None and (index is None or lp_index <= index):
+            return fail(prompt_id, "logprob", lp_index)
+        if index is not None:
+            return fail(prompt_id, "token", index)
+    result.update(verdict="PASS", reasons=[], first_difference=None)
+    return result
+
+
 def _load_pair(args: argparse.Namespace) -> tuple[PromptSet, LaneCapture, LaneCapture]:
     manifest = load_manifest(args.manifest)
     reference = load_capture(args.reference, manifest)
@@ -709,6 +803,13 @@ def _cmd_parity(args: argparse.Namespace) -> int:
     blocked = any(result.verdict == VERDICT_BLOCKED for result in results)
     diverged = any(result.verdict == VERDICT_DIVERGED for result in results)
     return 2 if blocked else (1 if diverged else 0)
+
+
+def _cmd_self_repro(args: argparse.Namespace) -> int:
+    manifest = load_manifest(args.manifest)
+    result = self_reproduction(manifest, args.first, args.second, args.first_logprobs, args.second_logprobs)
+    print(json.dumps(result, indent=2, sort_keys=True))
+    return {"PASS": 0, "FAIL": 1, VERDICT_BLOCKED: 2}[result["verdict"]]
 
 
 def _cmd_kl(args: argparse.Namespace) -> int:
@@ -775,6 +876,14 @@ def build_parser() -> argparse.ArgumentParser:
     parity.add_argument("--reference", required=True)
     parity.add_argument("--candidate", required=True)
     parity.set_defaults(func=_cmd_parity)
+
+    repro = sub.add_parser("self-repro", help="two runs of one lane: identical tokens and logprob bits")
+    repro.add_argument("--manifest", required=True)
+    repro.add_argument("--first", required=True)
+    repro.add_argument("--second", required=True)
+    repro.add_argument("--first-logprobs", required=True)
+    repro.add_argument("--second-logprobs", required=True)
+    repro.set_defaults(func=_cmd_self_repro)
 
     kl = sub.add_parser("kl", help="KL divergence between two normalised distributions")
     kl.add_argument("--reference", required=True)

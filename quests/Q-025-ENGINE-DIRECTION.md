@@ -23,6 +23,13 @@ The project's retained evidence already makes this a decision, not a curiosity:
 Continuing to absorb Strata without confronting that comparison is the largest strategic
 risk in the repository. This quest freezes the comparison before more engine work.
 
+## Tooling state (2026-10-24)
+
+The three-way run now has tooling: `harness/lanes/llama_server_lane.py` (llama.cpp `--cpu-moe`) next to
+the patched-engine lanes, under bench plan v2 (pinned placement, self-reproduction, `NO_XID` only from a
+read kernel log). It has run on a synthetic fixture only; this quest's receipt does not exist yet. See
+[FINDINGS](../docs/FINDINGS.md) F-008 to F-020 for what the first real-model attempts taught.
+
 ## Frozen protocol
 
 Freeze these values before the first run and keep every sample.

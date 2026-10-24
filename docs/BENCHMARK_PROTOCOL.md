@@ -26,7 +26,13 @@ Guardrails:
 - reject NVIDIA Xid/MMU faults as success;
 - distinguish sampled nvidia-smi telemetry from allocator traces;
 - keep cold, warm-host-cache, and warm-VRAM-cache states separate;
-- never compare different quantizations/topologies as if they were identical.
+- never compare different quantizations/topologies as if they were identical;
+- pin each lane's layer placement as identity and fail the lane on any drift (two loads of the
+  same binary placed 15 and 16 layers on the card and gave different tokens, `docs/FINDINGS.md` F-010);
+- require each lane to reproduce its own warmup output, tokens and logprob bits, before its timing
+  counts; a lane that differs from itself cannot be ranked;
+- report driver health `NO_XID` only from a kernel log that was actually read; otherwise `UNKNOWN`;
+- show the full sample range per lane; overlapping ranges are reported as overlap, not as a ranking.
 
 ## Desktop profiles
 

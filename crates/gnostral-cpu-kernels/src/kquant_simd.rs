@@ -8,6 +8,7 @@
 
 #![cfg(target_arch = "x86_64")]
 
+use crate::f16::f16_to_f32;
 use crate::kquant::{BlockQ2K, BlockQ3K, BlockQ8K};
 use core::arch::x86_64::*;
 
@@ -20,14 +21,14 @@ fn lanes_avx2(acc: __m256i) -> [i32; 8] {
     out
 }
 
-/// Lanes `j` and `j + 8` hold the same `(e % 32) / 4` class.
+/// Lanes `j` and `j + 8` hold the same `(e % 32) / 4` class; fold them into eight lanes.
 #[inline]
-#[target_feature(enable = "avx512f,avx512bw")]
-fn lanes_avx512(acc: __m512i) -> [i32; 8] {
-    let mut all = [0i32; 16];
-    // SAFETY: `all` is 64 writable bytes.
-    unsafe { _mm512_storeu_si512(all.as_mut_ptr() as *mut __m512i, acc) };
-    std::array::from_fn(|j| all[j] + all[j + 8])
+#[target_feature(enable = "avx512f,avx512bw,avx2")]
+fn fold_avx512(acc: __m512i) -> __m256i {
+    _mm256_add_epi32(
+        _mm512_castsi512_si256(acc),
+        _mm512_extracti64x4_epi64::<1>(acc),
+    )
 }
 
 /// `maddubs(u, q8) - maddubs(4, q8)`: the signed `Q3_K` value `u - 4` without a signed operand.
@@ -67,6 +68,13 @@ fn join(lo: __m256i, hi: __m256i) -> __m512i {
 /// AVX2 must be available.
 #[target_feature(enable = "avx2")]
 pub(crate) unsafe fn q2k_lanes_avx2(x: &BlockQ2K, y: &BlockQ8K) -> [i32; 8] {
+    // SAFETY: same target features as this function.
+    lanes_avx2(unsafe { q2k_acc_avx2(x, y) })
+}
+
+#[inline]
+#[target_feature(enable = "avx2")]
+unsafe fn q2k_acc_avx2(x: &BlockQ2K, y: &BlockQ8K) -> __m256i {
     let mask = _mm256_set1_epi8(3);
     let mut acc = _mm256_setzero_si256();
     for chunk in 0..2 {
@@ -88,13 +96,20 @@ pub(crate) unsafe fn q2k_lanes_avx2(x: &BlockQ2K, y: &BlockQ8K) -> [i32; 8] {
             acc = _mm256_add_epi32(acc, _mm256_madd_epi16(p, sv));
         }
     }
-    lanes_avx2(acc)
+    acc
 }
 
 /// # Safety
 /// AVX-512F and AVX-512BW must be available.
 #[target_feature(enable = "avx512f,avx512bw,avx2")]
 pub(crate) unsafe fn q2k_lanes_avx512(x: &BlockQ2K, y: &BlockQ8K) -> [i32; 8] {
+    // SAFETY: same target features as this function.
+    lanes_avx2(unsafe { q2k_acc_avx512(x, y) })
+}
+
+#[inline]
+#[target_feature(enable = "avx512f,avx512bw,avx2")]
+unsafe fn q2k_acc_avx512(x: &BlockQ2K, y: &BlockQ8K) -> __m256i {
     let mask = _mm256_set1_epi8(3);
     let mut acc = _mm512_setzero_si512();
     for chunk in 0..2 {
@@ -123,7 +138,7 @@ pub(crate) unsafe fn q2k_lanes_avx512(x: &BlockQ2K, y: &BlockQ8K) -> [i32; 8] {
             acc = _mm512_add_epi32(acc, _mm512_madd_epi16(p, sv));
         }
     }
-    lanes_avx512(acc)
+    fold_avx512(acc)
 }
 
 #[inline]
@@ -145,6 +160,13 @@ fn q3k_unsigned_avx2(bits: __m256i, hmask: __m256i, g: usize) -> __m256i {
 /// AVX2 must be available.
 #[target_feature(enable = "avx2")]
 pub(crate) unsafe fn q3k_lanes_avx2(x: &BlockQ3K, y: &BlockQ8K, scales: &[i8; 16]) -> [i32; 8] {
+    // SAFETY: same target features as this function.
+    lanes_avx2(unsafe { q3k_acc_avx2(x, y, scales) })
+}
+
+#[inline]
+#[target_feature(enable = "avx2")]
+unsafe fn q3k_acc_avx2(x: &BlockQ3K, y: &BlockQ8K, scales: &[i8; 16]) -> __m256i {
     // SAFETY: hmask has 32 bytes.
     let hmask = unsafe { _mm256_loadu_si256(x.hmask.as_ptr() as *const __m256i) };
     let mut acc = _mm256_setzero_si256();
@@ -161,13 +183,20 @@ pub(crate) unsafe fn q3k_lanes_avx2(x: &BlockQ3K, y: &BlockQ8K, scales: &[i8; 16
             acc = _mm256_add_epi32(acc, _mm256_madd_epi16(p, sv));
         }
     }
-    lanes_avx2(acc)
+    acc
 }
 
 /// # Safety
 /// AVX-512F and AVX-512BW must be available.
 #[target_feature(enable = "avx512f,avx512bw,avx2")]
 pub(crate) unsafe fn q3k_lanes_avx512(x: &BlockQ3K, y: &BlockQ8K, scales: &[i8; 16]) -> [i32; 8] {
+    // SAFETY: same target features as this function.
+    lanes_avx2(unsafe { q3k_acc_avx512(x, y, scales) })
+}
+
+#[inline]
+#[target_feature(enable = "avx512f,avx512bw,avx2")]
+unsafe fn q3k_acc_avx512(x: &BlockQ3K, y: &BlockQ8K, scales: &[i8; 16]) -> __m256i {
     // SAFETY: hmask has 32 bytes.
     let hmask = unsafe { _mm256_loadu_si256(x.hmask.as_ptr() as *const __m256i) };
     let mut acc = _mm512_setzero_si512();
@@ -195,5 +224,97 @@ pub(crate) unsafe fn q3k_lanes_avx512(x: &BlockQ3K, y: &BlockQ8K, scales: &[i8; 
             acc = _mm512_add_epi32(acc, _mm512_madd_epi16(p, sv));
         }
     }
-    lanes_avx512(acc)
+    fold_avx512(acc)
+}
+
+/// Candle `hsum_float_8`: `((a4 + a0) + (a6 + a2)) + ((a5 + a1) + (a7 + a3))`.
+#[inline]
+#[target_feature(enable = "avx2,fma")]
+fn hsum_float_8(x: __m256) -> f32 {
+    let r = _mm_add_ps(_mm256_extractf128_ps::<1>(x), _mm256_castps256_ps128(x));
+    let r = _mm_add_ps(r, _mm_movehl_ps(r, r));
+    let r = _mm_add_ss(r, _mm_movehdup_ps(r));
+    _mm_cvtss_f32(r)
+}
+
+/// One block of candle's `Q2_K` float combination: `fma(dmin, mins x bsums)` then `fma(d, sumi)`.
+#[inline]
+#[target_feature(enable = "avx2,fma")]
+unsafe fn q2k_candle_step(acc: __m256, x: &BlockQ2K, y: &BlockQ8K, sumi: __m256i) -> __m256 {
+    let d = y.d * f16_to_f32(x.d);
+    let dmin = -y.d * f16_to_f32(x.dmin);
+    // SAFETY: scales has 16 bytes, bsums 16 i16 (32 bytes).
+    let (scales, bsums) = unsafe {
+        (
+            _mm_loadu_si128(x.scales.as_ptr() as *const __m128i),
+            _mm256_loadu_si256(y.bsums.as_ptr() as *const __m256i),
+        )
+    };
+    let mins = _mm256_cvtepi8_epi16(_mm_and_si128(
+        _mm_srli_epi16::<4>(scales),
+        _mm_set1_epi8(0xF),
+    ));
+    let prod = _mm256_madd_epi16(mins, bsums);
+    let acc = _mm256_fmadd_ps(_mm256_set1_ps(dmin), _mm256_cvtepi32_ps(prod), acc);
+    _mm256_fmadd_ps(_mm256_set1_ps(d), _mm256_cvtepi32_ps(sumi), acc)
+}
+
+/// `Q2_K` dot with candle's AVX2+FMA float combination, bit-equal to candle's `vec_dot_q2k_q8k`.
+///
+/// # Safety
+/// AVX2 and FMA must be available.
+#[target_feature(enable = "avx2,fma")]
+pub(crate) unsafe fn q2k_dot_candle_avx2(w: &[BlockQ2K], a: &[BlockQ8K]) -> f32 {
+    let mut acc = _mm256_setzero_ps();
+    for (x, y) in w.iter().zip(a) {
+        // SAFETY: same target features as this function.
+        acc = unsafe { q2k_candle_step(acc, x, y, q2k_acc_avx2(x, y)) };
+    }
+    hsum_float_8(acc)
+}
+
+/// [`q2k_dot_candle_avx2`] with the AVX-512BW integer part.
+///
+/// # Safety
+/// AVX-512F, AVX-512BW, AVX2 and FMA must be available.
+#[target_feature(enable = "avx512f,avx512bw,avx2,fma")]
+pub(crate) unsafe fn q2k_dot_candle_avx512(w: &[BlockQ2K], a: &[BlockQ8K]) -> f32 {
+    let mut acc = _mm256_setzero_ps();
+    for (x, y) in w.iter().zip(a) {
+        // SAFETY: same target features as this function.
+        acc = unsafe { q2k_candle_step(acc, x, y, q2k_acc_avx512(x, y)) };
+    }
+    hsum_float_8(acc)
+}
+
+/// `Q3_K` dot with candle's AVX2+FMA float combination (`fma(d, sumi)` per block).
+///
+/// # Safety
+/// AVX2 and FMA must be available.
+#[target_feature(enable = "avx2,fma")]
+pub(crate) unsafe fn q3k_dot_candle_avx2(w: &[BlockQ3K], a: &[BlockQ8K]) -> f32 {
+    let mut acc = _mm256_setzero_ps();
+    for (x, y) in w.iter().zip(a) {
+        let d = _mm256_set1_ps(y.d * f16_to_f32(x.d));
+        // SAFETY: same target features as this function.
+        let sumi = unsafe { q3k_acc_avx2(x, y, &x.unpacked_scales()) };
+        acc = _mm256_fmadd_ps(d, _mm256_cvtepi32_ps(sumi), acc);
+    }
+    hsum_float_8(acc)
+}
+
+/// [`q3k_dot_candle_avx2`] with the AVX-512BW integer part.
+///
+/// # Safety
+/// AVX-512F, AVX-512BW, AVX2 and FMA must be available.
+#[target_feature(enable = "avx512f,avx512bw,avx2,fma")]
+pub(crate) unsafe fn q3k_dot_candle_avx512(w: &[BlockQ3K], a: &[BlockQ8K]) -> f32 {
+    let mut acc = _mm256_setzero_ps();
+    for (x, y) in w.iter().zip(a) {
+        let d = _mm256_set1_ps(y.d * f16_to_f32(x.d));
+        // SAFETY: same target features as this function.
+        let sumi = unsafe { q3k_acc_avx512(x, y, &x.unpacked_scales()) };
+        acc = _mm256_fmadd_ps(d, _mm256_cvtepi32_ps(sumi), acc);
+    }
+    hsum_float_8(acc)
 }

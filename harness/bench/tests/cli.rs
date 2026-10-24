@@ -220,7 +220,16 @@ fn compare_renders_a_three_lane_pareto_table() {
     assert!(report.contains("llama.cpp: median 34.500 tok/s over 3 samples"));
     assert!(report.contains("strata: median 9.500 tok/s over 3 samples"));
     assert!(report.contains("candidate: median 20.200 tok/s over 3 samples"));
-    assert!(report.contains("| llama.cpp | 34.500 | 3 | 7400.0 |"));
+    assert!(
+        report.contains("| llama.cpp | exact | 0-47:cuda:0;nm=cuda:0 | 34.500 | 34.000-35.000 | 3 | baseline | 7400.0 |"),
+        "{report}"
+    );
+    assert!(
+        report.contains(
+            "| strata | exact | 0-47:cuda:0;nm=cuda:0 | 9.500 | 9.400-9.600 | 3 | BELOW |"
+        ),
+        "{report}"
+    );
     assert!(report.contains("1.000x"), "{report}");
     assert!(report.contains("0.586x"), "{report}");
     assert!(report.contains("FRONT"), "{report}");
@@ -311,4 +320,81 @@ fn usage_errors_exit_two() {
     assert_eq!(output.status.code(), Some(2));
     let output = run(&["nonsense"]);
     assert_eq!(output.status.code(), Some(2));
+}
+
+#[test]
+fn validate_rejects_a_self_class_lane_that_claims_token_parity() {
+    let mut fixture = Fixture::new("llama.cpp", BIN_A, MODEL);
+    fixture.parity_class = "self".into();
+    let path = write_receipt(&fixture.render());
+    assert_invalid(&path, "expected NOT_APPLICABLE");
+    fixture.parity = "NOT_APPLICABLE".into();
+    assert_valid(&write_receipt(&fixture.render()));
+}
+
+#[test]
+fn validate_rejects_an_exact_lane_without_a_parity_verdict() {
+    let mut fixture = Fixture::new("strata", BIN_B, MODEL);
+    fixture.parity = "NOT_APPLICABLE".into();
+    assert_invalid(&write_receipt(&fixture.render()), "exact-class lane");
+}
+
+#[test]
+fn validate_requires_unknown_placement_to_be_explained() {
+    let mut fixture = Fixture::new("strata", BIN_B, MODEL);
+    fixture.placement = None;
+    assert_invalid(&write_receipt(&fixture.render()), "lane.placement");
+    fixture.extra_unknowns.push((
+        "lane.placement".into(),
+        "engine built without the placement report".into(),
+    ));
+    assert_valid(&write_receipt(&fixture.render()));
+}
+
+#[test]
+fn compare_refuses_unknown_placement_and_unreproducible_lanes() {
+    let a = write_receipt(&lane("llama.cpp", BIN_A, &[34.0, 34.5, 35.0], 7400.0).render());
+    let mut unplaced = lane("strata", BIN_B, &[9.4, 9.5, 9.6], 7200.0);
+    unplaced.placement = None;
+    unplaced
+        .extra_unknowns
+        .push(("lane.placement".into(), "not reported".into()));
+    let mut flaky = lane("candidate", BIN_C, &[20.0, 20.2, 20.4], 7100.0);
+    flaky.self_repro = "FAIL".into();
+    let output = run(&[
+        "compare",
+        &a,
+        &write_receipt(&unplaced.render()),
+        &write_receipt(&flaky.render()),
+    ]);
+    assert_eq!(output.status.code(), Some(1));
+    let message = stderr(&output);
+    // The CLI labels lanes by receipt path.
+    assert!(message.contains("layer placement is UNKNOWN"), "{message}");
+    assert!(
+        message.contains("self-reproducibility is FAIL"),
+        "{message}"
+    );
+}
+
+#[test]
+fn compare_marks_overlapping_ranges_instead_of_ranking_them() {
+    let a = write_receipt(&lane("per-route", BIN_A, &[112.0, 125.0, 127.0], 3000.0).render());
+    let b = write_receipt(&lane("grouped", BIN_B, &[97.0, 113.0, 131.0], 3000.0).render());
+    let c = write_receipt(&lane("gnostral", BIN_C, &[227.0, 259.0, 273.0], 3000.0).render());
+    let output = run(&["compare", &a, &b, &c]);
+    assert_eq!(output.status.code(), Some(0), "{}", stderr(&output));
+    let report = stdout(&output);
+    assert!(
+        report.contains(
+            "| grouped | exact | 0-47:cuda:0;nm=cuda:0 | 113.000 | 97.000-131.000 | 3 | OVERLAP |"
+        ),
+        "{report}"
+    );
+    assert!(
+        report.contains(
+            "| gnostral | exact | 0-47:cuda:0;nm=cuda:0 | 259.000 | 227.000-273.000 | 3 | ABOVE |"
+        ),
+        "{report}"
+    );
 }

@@ -28,16 +28,25 @@ pub enum Phase {
     Upload,
     Sample,
     PostProcess,
+    /// Waiting for queued device work to finish before a host read (not a transfer).
+    GpuWait,
+    /// Device-to-host and host-to-device copies in the MoE path, after any wait.
+    HostTransfer,
+    /// Routing plan, gather and ordered scatter on the host.
+    MoeBookkeeping,
 }
 
 impl Phase {
-    pub const ALL: [Phase; 6] = [
+    pub const ALL: [Phase; 9] = [
         Phase::Schedule,
         Phase::Forward,
         Phase::CpuExpert,
         Phase::Upload,
         Phase::Sample,
         Phase::PostProcess,
+        Phase::GpuWait,
+        Phase::HostTransfer,
+        Phase::MoeBookkeeping,
     ];
     pub fn name(self) -> &'static str {
         match self {
@@ -47,6 +56,9 @@ impl Phase {
             Phase::Upload => "upload",
             Phase::Sample => "sample",
             Phase::PostProcess => "post_process",
+            Phase::GpuWait => "gpu_wait",
+            Phase::HostTransfer => "host_transfer",
+            Phase::MoeBookkeeping => "moe_bookkeeping",
         }
     }
 }

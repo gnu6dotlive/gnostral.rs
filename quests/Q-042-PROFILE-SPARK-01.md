@@ -1,7 +1,7 @@
 # Q-042 — PROFILE-SPARK-01
 
 Review date: 2026-10-23
-State: **PROPOSED** — timer crate landed and wired into the engine (`patches/engine-program/0002`, feature `gnostral-trace`, `GNOSTRAL_TRACE=1`); token-neutral on the synthetic CPU fixture; no profile of a real model exists (planned after the placement fix, see [FINDINGS](../docs/FINDINGS.md)).
+State: **PROPOSED** — timer crate landed and wired into the engine (`patches/engine-program/0002`, feature `gnostral-trace`, `GNOSTRAL_TRACE=1`); token-neutral on the synthetic CPU fixture; no profile of a real model exists (planned after the placement fix, see [FINDINGS](../docs/FINDINGS.md)). Patch `0009` adds `gpu_wait`, `host_transfer` and `moe_bookkeeping` phases to the MoE path, so a lab timeline separates the three Phase 2 hypotheses (transfers, dispatch, kernel).
 Authorization: instrumentation behind an environment flag in the engine and harness, plus a
 single-request trace export. This quest does not authorize always-on tracing, a profiler dependency
 that changes the runtime, or a performance conclusion drawn without its own receipt.

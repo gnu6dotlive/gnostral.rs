@@ -272,3 +272,83 @@ class CliTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class SelfReproductionTests(unittest.TestCase):
+    """One lane captured twice must match itself bit for bit (docs/FINDINGS.md, F-010)."""
+
+    def setUp(self) -> None:
+        self.manifest = oracle.load_manifest(MANIFEST)
+        self.ids = [prompt.id for prompt in self.manifest.prompts]
+        self.dir = Path(tempfile.mkdtemp())
+
+    def _pair(self, name: str, tokens: dict[str, list[int]], logprob: float = -0.25,
+              placement: str | None = "0-47:cuda:0;nm=cuda:0", **kwargs) -> tuple[str, str]:
+        document = _capture_document(self.manifest, tokens, **kwargs)
+        document["lane"]["placement"] = placement
+        capture = self.dir / f"{name}.json"
+        capture.write_text(json.dumps(document), encoding="utf-8")
+        steps = [{"prompt_id": pid, "steps": [[[t, logprob], [t + 1, logprob - 0.25]] for t in ids]}
+                 for pid, ids in tokens.items()]
+        logprobs = self.dir / f"{name}.logprobs.json"
+        logprobs.write_text(json.dumps(steps), encoding="utf-8")
+        return str(capture), str(logprobs)
+
+    def _run(self, a: tuple[str, str], b: tuple[str, str]) -> dict:
+        return oracle.self_reproduction(self.manifest, a[0], b[0], a[1], b[1])
+
+    def test_identical_runs_pass(self) -> None:
+        tokens = {pid: [1, 2, 3] for pid in self.ids}
+        result = self._run(self._pair("a", tokens), self._pair("b", tokens))
+        self.assertEqual(result["verdict"], "PASS")
+        self.assertIsNone(result["first_difference"])
+
+    def test_one_ulp_logprob_change_fails_before_any_token_changes(self) -> None:
+        tokens = {pid: [1, 2, 3] for pid in self.ids}
+        nudged = math.nextafter(-0.25, 0.0)
+        result = self._run(self._pair("a", tokens), self._pair("b", tokens, logprob=nudged))
+        self.assertEqual(result["verdict"], "FAIL")
+        self.assertEqual(result["first_difference"]["kind"], "logprob")
+        self.assertEqual(result["first_difference"]["index"], 0)
+
+    def test_token_divergence_is_located(self) -> None:
+        tokens = {pid: [1, 2, 3, 4] for pid in self.ids}
+        other = dict(tokens)
+        other[self.ids[2]] = [1, 2, 9, 4]
+        result = self._run(self._pair("a", tokens), self._pair("b", other))
+        self.assertEqual(result["verdict"], "FAIL")
+        self.assertEqual(result["first_difference"]["prompt_id"], self.ids[2])
+        self.assertEqual(result["first_difference"]["index"], 2)
+
+    def test_placement_change_fails(self) -> None:
+        tokens = {pid: [1, 2, 3] for pid in self.ids}
+        result = self._run(self._pair("a", tokens),
+                           self._pair("b", tokens, placement="0-15:cuda:0,16-47:cpu;nm=cuda:0"))
+        self.assertEqual(result["verdict"], "FAIL")
+        self.assertEqual(result["first_difference"]["kind"], "placement")
+
+    def test_different_lane_or_unpinned_lane_is_blocked(self) -> None:
+        tokens = {pid: [1, 2, 3] for pid in self.ids}
+        result = self._run(self._pair("a", tokens), self._pair("b", tokens, model="c" * 64))
+        self.assertEqual(result["verdict"], oracle.VERDICT_BLOCKED)
+        result = self._run(self._pair("c", tokens, binary=None), self._pair("d", tokens, binary=None))
+        self.assertEqual(result["verdict"], oracle.VERDICT_BLOCKED)
+
+    def test_any_other_lane_identity_field_must_match(self) -> None:
+        tokens = {pid: [1, 2, 3] for pid in self.ids}
+        a, b = self._pair("a", tokens), self._pair("b", tokens)
+        doc = json.loads(Path(b[0]).read_text(encoding="utf-8"))
+        doc["lane"]["build_tree_sha256"] = "f" * 64
+        Path(b[0]).write_text(json.dumps(doc), encoding="utf-8")
+        self.assertEqual(self._run(a, b)["verdict"], oracle.VERDICT_BLOCKED)
+
+    def test_cli_exit_codes(self) -> None:
+        tokens = {pid: [1, 2, 3] for pid in self.ids}
+        a, b = self._pair("a", tokens), self._pair("b", tokens, logprob=-0.5)
+        script = Path(oracle.__file__).resolve()
+        for second, code in ((self._pair("same", tokens), 0), (b, 1)):
+            done = subprocess.run([sys.executable, "-I", str(script), "self-repro", "--manifest", str(MANIFEST),
+                                   "--first", a[0], "--second", second[0],
+                                   "--first-logprobs", a[1], "--second-logprobs", second[1]],
+                                  capture_output=True, text=True)
+            self.assertEqual(done.returncode, code, done.stderr)

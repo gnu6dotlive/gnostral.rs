@@ -157,6 +157,144 @@ Rules:
 - **Consequence:** any change of summation order can flip a greedy token. Token parity between
   lanes requires identical placement and numerics, not "close" ones.
 
+### F-016 · 2026-10-24 · The driver probe reported `NO_XID` without reading anything
+
+- **Class:** PROVEN (reproduced on a host without an NVIDIA driver and with an empty journal).
+- **What:** the plan's probe (`journalctl -k -b | grep -q 'NVRM: Xid'`, else `NO_XID`) printed
+  `NO_XID` when the kernel log was empty or unreadable, and the bench then accepted a comparison on a
+  machine with no GPU at all. Absence of evidence was reported as a clean driver.
+- **Fix:** `harness/bench/driver_probe.py` prints `NO_XID` only after reading this boot's kernel log
+  (journal, else `dmesg`) with an NVIDIA driver loaded, `UNKNOWN` otherwise, plus a detail line saying
+  what the verdict rests on. Six tests, including the empty-journal case.
+- **Consequence for earlier evidence:** the `NO_XID` of F-006 and F-007 came from the old probe. The
+  operator also checked the kernel log by hand and reported no Xid, so those runs are not known to be
+  dirty, but their driver verdict is SUPPORTED by that manual check, not by the probe.
+
+### F-017 · 2026-10-24 · The gnostral kernel lane is slower than candle on a tiny CPU-only model
+
+- **Class:** OBSERVED (two runs); cause UNKNOWN.
+- **What:** synthetic 2-layer fixture, every layer on the CPU, 4-core Xeon with AVX-512 in a cloud
+  container: `gnostral` 451-477 tok/s against `per-route` 820-903 and `grouped` 865-922 (ranges
+  disjoint, separation `BELOW`). On the lab's 8-layer CUDA fixture the same lane sat above `per-route`
+  (F-007).
+- **Hypothesis to test, not a conclusion:** fixed per-dispatch cost. The pool wakes its threads with a
+  condition variable on every projection (two dispatches per MoE layer per token), and on this host
+  those threads share four cores with candle's own rayon pool. With matrices this small the wake-up
+  and contention cost could exceed the compute. This is the second Phase 2 hypothesis; it gets an
+  instrumented measurement before any change.
+
+### F-018 · 2026-10-24 · The synthetic fixture mistyped its byte tokens
+
+- **Class:** PROVEN (llama.cpp refused the old file and loads the new one).
+- **What:** `make_qwen3moe_gguf.py` typed the 256 GPT-2 byte-level tokens as `BYTE` (6), which GGUF
+  reserves for SentencePiece `<0xXX>` tokens. mistral.rs ignored it; llama.cpp tried to parse the
+  token text as `<0xXX>` and failed to load the vocabulary. They are now `NORMAL` (1).
+- **Consequence:** the generator's output changed: seed 20261023 now gives
+  `d1dc2d72...9abce50` instead of `581b7325...69b5c6a`. Earlier receipts stay valid for the file they
+  name; reproducing them needs the generator at their commit.
+
+### F-019 · 2026-10-24 · llama-server omits probabilities for tokens inside an incomplete UTF-8 character
+
+- **Class:** SUPPORTED (source: `tools/server/server-context.cpp` at b11857 calls `add_token`, which
+  records probabilities, only once the generated text is valid UTF-8) and OBSERVED (32 tokens, 27
+  probability entries on one fixture prompt).
+- **Consequence:** per-token logprobs from `/completion` are not one per token. The llama.cpp lane
+  records the server's entries as reported, tagged by token id, checks they are an ordered
+  subsequence of the full token list, and its self-reproducibility compares both bit for bit. It does
+  not pretend to have a logprob for every token. Real text with accents or non-Latin scripts will hit
+  this too.
+
+### F-020 · 2026-10-24 · On the tiny CPU fixture llama.cpp decodes about 3x faster than our per-route lane
+
+- **Class:** OBSERVED (one four-lane run, three measured repetitions each); cause UNKNOWN.
+- **What:** same random 2-layer model, everything on a 4-core CPU: llama.cpp 2488-3134 tok/s,
+  `per-route` 820-915, `grouped` 771-870, `gnostral` 438-459. Every lane reproduced itself and kept
+  its pinned placement; the comparison itself was refused (driver `UNKNOWN`, F-016).
+- **Why it matters:** with matrices this small, per-token fixed costs dominate. It is a hint, to be
+  measured with the Q-042 timers, that the gap to llama.cpp on the real model may include fixed
+  overhead per layer and per token, not only kernel throughput. It is not a statement about
+  Qwen3-30B-A3B.
+- **Evidence:** `evidence/runs/synthetic-moe-four-lane-cpu-20261024/summary.json`.
+
+### F-021 · 2026-10-24 · Our expert kernel is about 3x slower than ggml's at decode shapes
+
+- **Class:** OBSERVED on a cloud VM (4-core Xeon with AVX-512, 260 MiB L3), not on the lab host.
+- **What:** Qwen3-30B-A3B expert geometry, one token, 8 experts, 2 threads on both sides, the same 8
+  experts every iteration on both sides (`test-backend-ops` uses ids 0..7): our `grouped_expert_ffn`
+  3.23 ms median per layer; ggml's three `MUL_MAT_ID` (gate, up, down) about 1.01-1.03 ms. Per block,
+  single thread: our `Q2_K` dot 19.4 ns, `Q3_K` 30.9 ns; ggml at 2 threads works out to roughly 10 and
+  19 ns per block per thread.
+- **Limits:** ggml's figure excludes SwiGLU and the activation re-quantisation between up and down; this
+  host's L3 holds all 128 experts, so neither side is memory-bound here as it would be on a desktop CPU.
+- **Evidence:** `evidence/runs/kernel-microbench-cloud-20261024/summary.json` (raw samples, ggml output,
+  the two-line `test-backend-ops` diff that adds the `Q2_K`/`Q3_K` cases).
+
+### F-022 · 2026-10-24 · Waking the thread pool costs tens of microseconds per dispatch
+
+- **Class:** OBSERVED (same VM).
+- **What:** `Pool::run` over trivial tasks: 27 us at 2 threads, 68 us at 4. The grouped kernel dispatches
+  twice per MoE layer per token, so 48 layers at 4 threads would spend about 6.5 ms per token waking
+  threads, against a 28.6 ms budget per token at the M1 target of 35 tok/s.
+- **Next:** the second Phase 2 hypothesis now has a number on this host; it needs the lab's timeline
+  (patch `0009`) before any change, and any change keeps the bit-equality tests.
+
+### F-023 · 2026-10-24 · The engine's bit-exact numerics path is 3x slower than the native one for Q2_K
+
+- **Class:** OBSERVED (same VM).
+- **What:** per `Q2_K` block, `Numerics::CandleCompat` 58 ns against `Native` 19 ns (AVX-512 integer part
+  in both); `Q3_K` 34 vs 31 ns. The candle-compatible combination runs its eight lanes and the `mins` x
+  `bsums` products in scalar code per block. The engine's `gnostral` lane uses `CandleCompat` (F-002).
+- **Next:** candle itself does that combination with `_mm256_fmadd_ps` on the same eight lanes, so a
+  vectorised version can stay bit-identical; it is a Phase 3 candidate, to be done with the existing
+  intrinsics-transcription tests as the gate.
+
+### F-024 · 2026-10-24 · The bit-exact path is now faster than the native one, and still bit-exact
+
+- **Class:** OBSERVED (same VM, same session, before and after binaries interleaved); bit equality PROVEN
+  by tests against candle itself and end to end.
+- **What:** Phase 3a moved the `CandleCompat` combination (F-023) into one `target_feature` function per
+  row, with candle's FMA order and `hsum_float_8`. Per block, AVX-512: `Q2_K` 56.9 -> 9.9 ns, `Q3_K` 33.6
+  -> 19.3 ns; AVX2: 59.7 -> 10.7 and 37.8 -> 21.7 ns. Expert layer of Qwen3-30B-A3B geometry (8 experts
+  rotating from 128, one token): 2 threads 5.53 -> 2.24 ms, 4 threads 3.15 -> 1.50 ms, ranges disjoint.
+  Against ggml's 1.01-1.03 ms at 2 threads (F-021), the engine's lane goes from about 5.4x to 2.2x behind.
+- **Bit equality:** the crate's transcription tests pass, and both deliberate mutations (FMAs swapped,
+  sequential horizontal sum) make them fail; the engine test `gnostral_cpu_kernel_is_bit_equal_to_candle`
+  passes; on the synthetic fixture every lane's 1024 tokens and 2048 logprob entries are bit-identical to
+  the committed four-lane evidence (only the binary hash differs).
+- **Not shown:** an end-to-end speed change. The earlier fixture run is from another session and the
+  fixture is too small for the kernel to dominate (F-017). The lab's M1 run is where it can show.
+- **Evidence:** `evidence/runs/kernel-candlecompat-vectorised-20261024/`.
+
+### F-025 · 2026-10-24 · The native path pays per-block overhead the fast path does not
+
+- **Class:** OBSERVED (same VM) for the numbers; INFERRED for the cause, from the code.
+- **What:** after F-024 the `Native` numerics (18.4 ns per `Q2_K` block) is about 2x slower than
+  `CandleCompat` (9.9 ns) although it does no more arithmetic. Native calls a lane function per block
+  through a `target_feature` boundary that cannot inline, stores the eight lanes to memory, sums them in
+  scalar code and computes `summs` over 16 scalar products. A whole-row native loop would keep integer
+  sums exact, so it can be bit-identical to today's native output. Native is not on the engine's path
+  (the engine uses `CandleCompat`), so this is recorded, not scheduled.
+- **Process (PROCESS):** the same unchanged native AVX2 dot measured 37.2 ns in one session (F-021
+  evidence) and 20.6 ns in this one, on VMs reporting the same CPU model. Microbenchmark numbers from
+  different sessions are not comparable; only interleaved before/after in one session is evidence of a
+  change.
+
+### F-026 · 2026-10-24 · The owner's new target model may not load in this engine tree
+
+- **Class:** OBSERVED from source for the engine; UNKNOWN for the model until its file is inventoried.
+- **What:** the owner's survey of 2026-10-24 (8 GB VRAM, 32 GB RAM; a document outside this repository,
+  its figures not measured here) names Qwen3.6-35B-A3B in Unsloth `UD-IQ4_XS` (16.5 GiB by its count) as
+  the LLM to use, replacing Qwen3-30B-A3B. In this tree:
+  - `mistralrs-quant/src/gguf/archive.rs` `candle_dtype` maps only F32, F16, BF16, Q4_0, Q4_1, Q5_0, Q5_1,
+    Q8_0, Q8_1 and Q2_K to Q8_K; every other type, `IQ4_XS` (23) included, fails the load;
+  - expert residency accepts Q2_K to Q6_K, Q4_0, Q4_1, Q5_0, Q5_1 and Q8_0; the Q-029 kernels (and the
+    gain in F-024) cover Q2_K and Q3_K only, other types run candle's kernels;
+  - patch `0007`'s device-map sizing covers the `qwen3moe` loader; the engine has separate `qwen3next`
+    and `qwen3_5_moe` (hybrid linear and full attention) paths that the program has not touched.
+- **Not known:** Qwen3.6's GGUF architecture string and which types an `UD-IQ4_XS` file actually holds
+  per tensor. `harness/model-inventory/gguf_inventory.py` answers both from the header in seconds;
+  it has to run on the lab's copy of the file before any engineering is chosen for this model.
+
 ## Evidence not yet in the repository
 
 These directories exist on the lab disk only. Until they are committed they are not program

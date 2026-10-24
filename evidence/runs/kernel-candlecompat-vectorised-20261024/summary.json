@@ -1,0 +1,240 @@
+{
+ "schema": "gnostral.rs/evidence-summary/1",
+ "date": "2026-10-24",
+ "claim_class": "OBSERVED",
+ "scope": "Phase 3a: Numerics::CandleCompat combination vectorised (whole row inside one target_feature function, candle's FMA order and hsum_float_8). Same cloud VM, same session, before and after binaries interleaved round by round. Not the lab host.",
+ "before": "crates/gnostral-cpu-kernels at fe77a9f (kquant_bench built from a detached worktree)",
+ "after": "fe77a9f plus the Phase 3a change to src/kquant.rs and src/kquant_simd.rs",
+ "dot_ns_per_block": {
+  "avx2/candle/after": {
+   "q2k": {
+    "median": 10.68,
+    "min": 10.66,
+    "max": 15.51,
+    "n": 15
+   },
+   "q3k": {
+    "median": 21.71,
+    "min": 21.48,
+    "max": 30.2,
+    "n": 15
+   }
+  },
+  "avx2/candle/before": {
+   "q2k": {
+    "median": 59.74,
+    "min": 55.5,
+    "max": 64.32,
+    "n": 15
+   },
+   "q3k": {
+    "median": 37.81,
+    "min": 37.23,
+    "max": 45.88,
+    "n": 15
+   }
+  },
+  "avx2/native/after": {
+   "q2k": {
+    "median": 20.66,
+    "min": 20.42,
+    "max": 27.92,
+    "n": 15
+   },
+   "q3k": {
+    "median": 33.58,
+    "min": 32.94,
+    "max": 39.66,
+    "n": 15
+   }
+  },
+  "avx2/native/before": {
+   "q2k": {
+    "median": 20.62,
+    "min": 20.55,
+    "max": 39.32,
+    "n": 15
+   },
+   "q3k": {
+    "median": 33.96,
+    "min": 33.0,
+    "max": 38.34,
+    "n": 15
+   }
+  },
+  "avx512bw/candle/after": {
+   "q2k": {
+    "median": 9.88,
+    "min": 9.57,
+    "max": 20.5,
+    "n": 15
+   },
+   "q3k": {
+    "median": 19.31,
+    "min": 18.67,
+    "max": 26.0,
+    "n": 15
+   }
+  },
+  "avx512bw/candle/before": {
+   "q2k": {
+    "median": 56.94,
+    "min": 53.92,
+    "max": 80.02,
+    "n": 15
+   },
+   "q3k": {
+    "median": 33.62,
+    "min": 32.39,
+    "max": 38.75,
+    "n": 15
+   }
+  },
+  "avx512bw/native/after": {
+   "q2k": {
+    "median": 18.41,
+    "min": 18.02,
+    "max": 27.67,
+    "n": 15
+   },
+   "q3k": {
+    "median": 29.6,
+    "min": 29.32,
+    "max": 35.62,
+    "n": 15
+   }
+  },
+  "avx512bw/native/before": {
+   "q2k": {
+    "median": 18.98,
+    "min": 18.14,
+    "max": 34.94,
+    "n": 15
+   },
+   "q3k": {
+    "median": 29.91,
+    "min": 29.17,
+    "max": 37.72,
+    "n": 15
+   }
+  }
+ },
+ "ffn_layer_ms": {
+  "threads=1/candle/after": {
+   "median": 3.5,
+   "min": 2.92,
+   "max": 4.02,
+   "n": 30
+  },
+  "threads=1/candle/before": {
+   "median": 8.21,
+   "min": 7.88,
+   "max": 10.66,
+   "n": 30
+  },
+  "threads=1/native/after": {
+   "median": 6.0,
+   "min": 4.07,
+   "max": 6.69,
+   "n": 30
+  },
+  "threads=1/native/before": {
+   "median": 4.44,
+   "min": 4.03,
+   "max": 6.47,
+   "n": 30
+  },
+  "threads=2/candle/after": {
+   "median": 2.24,
+   "min": 2.09,
+   "max": 2.56,
+   "n": 30
+  },
+  "threads=2/candle/before": {
+   "median": 5.53,
+   "min": 4.94,
+   "max": 9.26,
+   "n": 30
+  },
+  "threads=2/native/after": {
+   "median": 3.23,
+   "min": 2.93,
+   "max": 4.72,
+   "n": 30
+  },
+  "threads=2/native/before": {
+   "median": 3.26,
+   "min": 2.93,
+   "max": 5.5,
+   "n": 30
+  },
+  "threads=4/candle/after": {
+   "median": 1.5,
+   "min": 1.31,
+   "max": 1.85,
+   "n": 30
+  },
+  "threads=4/candle/before": {
+   "median": 3.15,
+   "min": 2.85,
+   "max": 4.82,
+   "n": 30
+  },
+  "threads=4/native/after": {
+   "median": 2.02,
+   "min": 1.84,
+   "max": 3.55,
+   "n": 30
+  },
+  "threads=4/native/before": {
+   "median": 2.08,
+   "min": 1.82,
+   "max": 2.41,
+   "n": 30
+  }
+ },
+ "ffn_geometry": "hidden 2048, inter 768, 8 experts rotating from 128, one token, AVX-512 integer part (Qwen3-30B-A3B experts)",
+ "ffn_checksums_before_equal_after": {
+  "threads=1/candle": true,
+  "threads=1/native": true,
+  "threads=2/candle": true,
+  "threads=2/native": true,
+  "threads=4/candle": true,
+  "threads=4/native": true
+ },
+ "native_threads1_rerun_per_round_median_ms": {
+  "before": [
+   4.06,
+   4.21,
+   4.35,
+   4.01,
+   4.09,
+   6.54
+  ],
+  "after": [
+   4.08,
+   6.24,
+   4.03,
+   4.12,
+   4.29,
+   4.03
+  ]
+ },
+ "native_threads1_note": "both binaries alternate between about 4.0-4.3 ms and 6.2-6.5 ms per round on this VM; the first pass's 4.44 vs 6.00 ms median was that bimodality, not a regression (native code is unchanged)",
+ "bit_equality": {
+  "crate_tests": "cargo test --release (48 tests incl. candle_compat_dot_bit_equal_to_candle_on_every_isa, candle_compat_grouped_ffn_bit_equal_to_candle_composition)",
+  "mutations_caught": [
+   "swapped the two FMAs in the Q2_K step",
+   "sequential lane sum instead of hsum_float_8"
+  ],
+  "engine_test": "mistralrs-core moe tests incl. gnostral_cpu_kernel_is_bit_equal_to_candle (against candle itself): 54 passed",
+  "end_to_end": "synthetic 2-layer fixture (sha d1dc2d72), lanes per-route, grouped, gnostral, cpu-experts config: 1024 tokens and 2048 logprob entries bit-identical to evidence/runs/synthetic-moe-four-lane-cpu-20261024 on every lane; only binary_sha256 differs"
+ },
+ "end_to_end_speed": "not comparable: the earlier fixture run is from another session (the same native AVX2 dot measured 37 ns there and 21 ns here), and the fixture's matrices are too small for the kernel to dominate (F-017)",
+ "files": [
+  "dot-before-after.jsonl",
+  "ffn-before-after.jsonl",
+  "ffn-native-t1-rerun.jsonl",
+  "host.txt"
+ ]
+}

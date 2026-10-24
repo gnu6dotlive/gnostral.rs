@@ -20,9 +20,11 @@ to the inventory). `git apply --check` against that tree passes.
 | `0005-mistralrs-strata-capture-topn-logprobs-only-no-prefix-cache.patch` | see file | On top of `0004`: `gnostral_capture` gains `--topn N --logprobs-out PATH` (top-N logprobs per step), `--no-prefix-cache` and `--only ID,ID` (reproducibility diagnostics) |
 | `0006-mistralrs-strata-residency-aware-device-map-q027.patch` | `c4b8c867...c617b4` | On top of `0005`: residency-aware sizing in `GgufDeviceMapLoaderInner`. **Only the legacy adapter path uses it**; on the lab, `GgufModelBuilder` still mapped 16 of 48 layers to CUDA with 0006 alone. Kept for that path; `0007` is the fix that matters |
 | `0007-mistralrs-strata-residency-aware-native-gguf-device-map-q027.patch` | `d42d60cf...72403d` | On top of `0006`: the native GGUF path (`load_native_normal` -> `NormalLoader` -> `Qwen3MoELoader`, PreparedWeightSource sizing) drops expert stacks from mapped layer sizes under residency and reserves the cache budget once. Unit test on the Qwen3-30B-A3B geometry; the lab must confirm `Layers 0-47: cuda[0]` |
+| `0008-mistralrs-strata-placement-report-gpu-layers-q031.patch` | `86cd4e16...adb831` | On top of `0007`: `GNOSTRAL_PLACEMENT_OUT` placement report from `DeviceMapSetting::into_mapper` (feature `gnostral-trace`), `gnostral_capture --gpu-layers N` and a `GNOSTRAL_PLACEMENT` line recorded in the capture; a test that walks the native GGUF path and fails without `0007` |
+| `0009-mistralrs-strata-moe-transfer-spans-q042.patch` | `5ffecbcd...ef4b07` | On top of `0008` (needs `crates/gnostral-trace` with the `gpu_wait`, `host_transfer`, `moe_bookkeeping` phases): the grouped executor times device-to-host and host-to-device copies, the routing plan/gather/scatter, and, only while a timeline records, drains the device queue before each host read so waits are not charged to copies. Bit-identical captures with tracing on and off |
 | `candle-strata-public-reconstruction.BUILD-ONLY.patch` | `f9549036...98e7b` | **Not for the lab.** Lets the public candle `35d7ae7` stand in for the unpublished lab candle-strata (`f0f334aa`): reconstructed `expert_slice_to`, the Q-010 `cpu_expert_matmul_k`, `cuda_allocation_bytes`, and load-refusing Bonsai PQ2_0/PTQ1_0 stubs |
 
-The lab tree already carries the real candle-strata; apply `0001` to `0007` in order there, not the BUILD-ONLY patch.
+The lab tree already carries the real candle-strata; apply `0001` to `0009` in order there, not the BUILD-ONLY patch.
 
 ## Runtime selection (same binary, A/B by environment)
 

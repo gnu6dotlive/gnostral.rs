@@ -1,0 +1,8 @@
+4
+model name	: Intel(R) Xeon(R) Processor @ 2.10GHz
+Thread(s) per core:                      1
+Core(s) per socket:                      4
+Socket(s):                               1
+Flags: ...avx512_fp16 amx_tile amx_int8 arch_capabilities
+L2 cache:                                8 MiB (4 instances)
+L3 cache:                                260 MiB (1 instance)

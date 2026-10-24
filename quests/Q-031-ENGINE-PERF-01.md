@@ -35,6 +35,10 @@ reconstructed by a second person.
 | Sample retention | every sample and every failed run kept | only medians retained |
 | Recomputability | a second person can rerun the command and reproduce the table from the receipts | provenance unclear |
 | Testability | orchestrator tested with synthetic receipts offline | untested driver used for a real decision |
+| Placement identity (plan v2) | every run reports the engine's layer placement and it equals the plan's `expected_placement`, warmup included | any drift fails the lane (FINDINGS F-010) |
+| Self-reproducibility (plan v2) | every measured run matches the lane's own warmup in tokens and logprob bits | a lane that does not reproduce itself is not ranked |
+| Driver evidence | `NO_XID` only after the kernel log of the boot was read | an unreadable log reads as `UNKNOWN`, never `NO_XID` (F-016) |
+| Separation | the table prints each lane's full range and whether it lies above, below or overlaps the baseline's | a median ratio between overlapping ranges presented as a ranking |
 
 The benchmark's numeric verdict belongs to the milestone that owns the threshold (M1/M2/M3); this
 quest produces the receipt, it does not award a result.

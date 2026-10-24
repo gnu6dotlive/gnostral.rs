@@ -394,6 +394,15 @@ impl KQuantBlock for BlockQ2K {
         let isa = kernel.isa;
         assert!(isa.available(), "{} unavailable", isa.name());
         if kernel.numerics == Numerics::CandleCompat && candle_uses_avx2_fma() {
+            match isa {
+                #[cfg(target_arch = "x86_64")]
+                // SAFETY: AVX2 and FMA detected by `candle_uses_avx2_fma`, the ISA asserted above.
+                Isa::Avx2 => return unsafe { crate::kquant_simd::q2k_dot_candle_avx2(w, a) },
+                #[cfg(target_arch = "x86_64")]
+                // SAFETY: AVX2 and FMA detected as above; AVX-512F/BW asserted by `isa.available()`.
+                Isa::Avx512 => return unsafe { crate::kquant_simd::q2k_dot_candle_avx512(w, a) },
+                _ => {}
+            }
             let mut acc = [0f32; 8];
             for (x, y) in w.iter().zip(a) {
                 let lanes = q2k_lanes(isa, x, y);
@@ -444,6 +453,17 @@ impl KQuantBlock for BlockQ3K {
                 sumf
             }
             Numerics::CandleCompat if candle_uses_avx2_fma() => {
+                match isa {
+                    #[cfg(target_arch = "x86_64")]
+                    // SAFETY: AVX2 and FMA detected by `candle_uses_avx2_fma`, the ISA asserted above.
+                    Isa::Avx2 => return unsafe { crate::kquant_simd::q3k_dot_candle_avx2(w, a) },
+                    #[cfg(target_arch = "x86_64")]
+                    // SAFETY: AVX2 and FMA detected as above; AVX-512F/BW asserted by `isa.available()`.
+                    Isa::Avx512 => {
+                        return unsafe { crate::kquant_simd::q3k_dot_candle_avx512(w, a) }
+                    }
+                    _ => {}
+                }
                 let mut acc = [0f32; 8];
                 for (x, y) in w.iter().zip(a) {
                     let lanes = q3k_lanes(isa, x, y, &x.unpacked_scales());
