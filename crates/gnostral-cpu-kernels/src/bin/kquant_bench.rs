@@ -1,10 +1,10 @@
 //! K-quant kernel microbenchmarks (Q-029; Phase 2 instrumentation, docs/FINDINGS.md).
 //!
 //! ```text
-//! cargo run --release --bin kquant_bench -- [--mode ffn|dispatch|dot]
+//! cargo run --release --bin kquant_bench -- [--mode ffn|dispatch|dot|bandwidth]
 //!     [--hidden H] [--inter I] [--groups G] [--rows R] [--pool-experts E]
 //!     [--warmup W] [--reps N] [--threads T] [--isa scalar|avx2|avx512]
-//!     [--numerics native|candle] [--seed S]
+//!     [--numerics native|candle] [--seed S] [--bytes B]
 //! ```
 //!
 //! Modes, each printing one JSON object with every sample:
@@ -17,6 +17,10 @@
 //!   decode.
 //! - `dispatch`: `Pool::run` over trivial tasks, the fixed cost of waking the pool once.
 //! - `dot`: single-thread `Q2_K` and `Q3_K` row dot products, nanoseconds per 256-value block.
+//! - `bandwidth`: `T` threads stream-read a `B`-byte buffer (default 1 GiB, far beyond any cache),
+//!   the host's practical memory read ceiling in GB/s. Compare it with the `ffn` mode's
+//!   `median_gb_per_s` (expert weight bytes per iteration over time): when they are close, the
+//!   expert phase is bound by memory, not by the kernel.
 //!
 //! INDICATIVE ONLY: a synthetic-block microbenchmark is not engine throughput and must never
 //! be reported as tok/s for a model.
@@ -30,11 +34,14 @@ use gnostral_cpu_kernels::{
     KQuantBlock, Numerics, Pool, QK_K,
 };
 
+const MIN_BANDWIDTH_BYTES: usize = 64 << 20;
+
 #[derive(Clone, Copy, PartialEq)]
 enum Mode {
     Ffn,
     Dispatch,
     Dot,
+    Bandwidth,
 }
 
 struct Config {
@@ -50,6 +57,7 @@ struct Config {
     isa: Isa,
     numerics: Numerics,
     seed: u64,
+    bytes: usize,
 }
 
 fn parse() -> Result<Config, String> {
@@ -66,6 +74,7 @@ fn parse() -> Result<Config, String> {
         isa: Isa::detect(),
         numerics: Numerics::Native,
         seed: 0x9e37_79b9_7f4a_7c15,
+        bytes: 1 << 30,
     };
     let mut args = std::env::args().skip(1);
     while let Some(flag) = args.next() {
@@ -77,6 +86,7 @@ fn parse() -> Result<Config, String> {
                     "ffn" => Mode::Ffn,
                     "dispatch" => Mode::Dispatch,
                     "dot" => Mode::Dot,
+                    "bandwidth" => Mode::Bandwidth,
                     other => return Err(format!("unknown mode {other}")),
                 }
             }
@@ -89,6 +99,7 @@ fn parse() -> Result<Config, String> {
             "--reps" => c.reps = num(value()?)?,
             "--threads" => c.threads = num(value()?)?,
             "--seed" => c.seed = num(value()?)? as u64,
+            "--bytes" => c.bytes = num(value()?)?,
             "--isa" => {
                 c.isa = match value()?.as_str() {
                     "scalar" => Isa::Scalar,
@@ -122,6 +133,11 @@ fn parse() -> Result<Config, String> {
     }
     if !c.isa.available() {
         return Err(format!("{} is not available on this CPU", c.isa.name()));
+    }
+    if c.bytes < MIN_BANDWIDTH_BYTES {
+        return Err(format!(
+            "--bytes must be at least {MIN_BANDWIDTH_BYTES} to exceed the caches"
+        ));
     }
     Ok(c)
 }
@@ -234,10 +250,13 @@ fn bench_ffn(c: &Config, rng: &mut Rng) -> String {
             samples_ns.push(ns);
         }
     }
+    let weight_bytes = c.groups * expert_bytes(c.hidden, c.inter);
+    let median_ns = median(&samples_ns);
     format!(
         "{{\"bench\":\"grouped_expert_ffn\",\"indicative_only\":true,\"hidden\":{},\"inter\":{},\
 \"groups\":{},\"rows_per_group\":{},\"pool_experts\":{},\"isa\":\"{}\",\"numerics\":\"{}\",\
-\"threads\":{},\"warmup\":{},\"samples_ns\":{:?},\"median_ns\":{},\"checksum\":{}}}",
+\"threads\":{},\"warmup\":{},\"samples_ns\":{:?},\"median_ns\":{},\"weight_bytes_per_iteration\":{},\
+\"median_gb_per_s\":{:.2},\"checksum\":{}}}",
         c.hidden,
         c.inter,
         c.groups,
@@ -248,8 +267,61 @@ fn bench_ffn(c: &Config, rng: &mut Rng) -> String {
         c.threads,
         c.warmup,
         samples_ns,
-        median(&samples_ns),
+        median_ns,
+        weight_bytes,
+        weight_bytes as f64 / median_ns,
         checksum
+    )
+}
+
+/// Bytes of one expert's `Q2_K` gate and up plus `Q3_K` down, as read once per decode token.
+fn expert_bytes(hidden: usize, inter: usize) -> usize {
+    let blocks = hidden * inter / QK_K;
+    2 * blocks * std::mem::size_of::<BlockQ2K>() + blocks * std::mem::size_of::<BlockQ3K>()
+}
+
+fn bench_bandwidth(c: &Config) -> String {
+    const LANES: usize = 8;
+    let words = c.bytes / 8;
+    // Filling the buffer touches every page before timing starts.
+    let buf: Vec<u64> = (0..words as u64).collect();
+    let pool = Pool::new(c.threads);
+    let chunk = words.div_ceil(c.threads);
+    let total = std::sync::atomic::AtomicU64::new(0);
+    let mut samples_ns = Vec::new();
+    for i in 0..c.warmup + c.reps {
+        let start = Instant::now();
+        pool.run(c.threads, |t| {
+            let part = &buf[(t * chunk).min(words)..((t + 1) * chunk).min(words)];
+            let mut acc = [0u64; LANES];
+            for block in part.chunks_exact(LANES) {
+                for (a, &w) in acc.iter_mut().zip(block) {
+                    *a = a.wrapping_add(w);
+                }
+            }
+            let sum = acc.iter().fold(0u64, |s, &a| s.wrapping_add(a));
+            total.fetch_add(black_box(sum), std::sync::atomic::Ordering::Relaxed);
+        });
+        let ns = start.elapsed().as_nanos() as u64;
+        if i >= c.warmup {
+            samples_ns.push(ns);
+        }
+    }
+    let bytes = words * 8;
+    let gbps: Vec<f64> = samples_ns
+        .iter()
+        .map(|&ns| bytes as f64 / ns as f64)
+        .collect();
+    format!(
+        "{{\"bench\":\"read_bandwidth\",\"indicative_only\":true,\"threads\":{},\"bytes\":{},\
+\"samples_gb_per_s\":{:?},\"median_gb_per_s\":{:.2},\"checksum\":{}}}",
+        c.threads,
+        bytes,
+        gbps.iter()
+            .map(|g| (g * 100.0).round() / 100.0)
+            .collect::<Vec<_>>(),
+        bytes as f64 / median(&samples_ns),
+        total.load(std::sync::atomic::Ordering::Relaxed)
     )
 }
 
@@ -347,6 +419,7 @@ fn main() {
         Mode::Ffn => bench_ffn(&c, &mut rng),
         Mode::Dispatch => bench_dispatch(&c),
         Mode::Dot => bench_dot(&c, &mut rng),
+        Mode::Bandwidth => bench_bandwidth(&c),
     };
     println!("{line}");
 }
