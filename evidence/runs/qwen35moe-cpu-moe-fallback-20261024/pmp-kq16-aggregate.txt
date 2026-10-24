@@ -1,0 +1,33 @@
+samples: 45
+thread states: {'idle': 695, 'running': 43}
+
+top frame (non-idle):
+    15  __memcpy_avx512_unaligned_erms
+    13  ::to_float
+     5  f32::hx2x1
+     2  {closure#2}::{closure#0},
+     2  __GI_munmap
+     2  fma::gemm_basic
+     2  __memset_avx512_unaligned_erms
+     1  gated_delta_rule_recurrence::{closure#0}
+     1  ::drop
+
+first engine frame (non-idle):
+    15  ::map
+    13  ::to_float
+     7  f::
+     2  {closure#2}::{closure#0},
+     2  ::drop_slow
+     2  ::dequantize
+     1  gated_delta_rule_recurrence::{closure#0}
+     1  ::drop
+
+engine chains under copy/dequantize leaves:
+[15] __memcpy_avx512_unaligned_erms <- ::map <- ::index_select <- ::index_select <- ::index_select:: <- ::gather_forward_raw <- mistralrs_quant::gguf::cpu::cpu_indexed_moe_forward <- ::gather_forward_raw <- ::gather_forward
+
+[13] ::to_float <- ::dequantize <- ::dequantize <- mistralrs_quant::gguf::cpu::cpu_indexed_moe_forward <- ::gather_forward_raw <- ::gather_forward <- ::forward_impl <- ::forward <- ::forward
+
+[2] __GI_munmap <- ::drop_slow <- ::drop_slow <- ::gather_forward_raw <- mistralrs_quant::gguf::cpu::cpu_indexed_moe_forward <- ::gather_forward_raw <- ::gather_forward <- ::forward_impl <- ::forward
+
+[2] __memset_avx512_unaligned_erms <- ::dequantize <- ::dequantize <- mistralrs_quant::gguf::cpu::cpu_indexed_moe_forward <- ::gather_forward_raw <- ::gather_forward <- ::forward_impl <- ::forward <- ::forward
+
