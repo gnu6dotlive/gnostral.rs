@@ -1,0 +1,12 @@
+[package]
+name = "gnostral-assistant"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.94"
+license = "MIT"
+description = "Q-044/Q-045 assistant engine policy: realtime-first GPU sharing with an admission test, voice turn state machine with barge-in, speakable text chunking"
+publish = false
+
+[workspace]
+
+[dependencies]

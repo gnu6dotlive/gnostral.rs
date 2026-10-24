@@ -89,7 +89,7 @@ Parallel research may be executed in independent worktrees; **no research intake
 
 ## Engine program — PROPOSED
 
-A separate, gated program for the engine itself: **run a 30B-class MoE model on an 8 GiB consumer GPU at quality parity, faster than anything that fits that card, with reusable measurements.** Program of record: [ENGINE_PROGRAM.md](ENGINE_PROGRAM.md) — thesis, scorecard, five invariants, workstreams W1–W6, milestone ladder M0–M6, decision gates D1–D4, and the evidence policy ("no number without a receipt").
+A separate, gated program for the engine itself: **run a 30B-class MoE model on an 8 GiB consumer GPU at quality parity, faster than anything that fits that card, with reusable measurements.** Program of record: [ENGINE_PROGRAM.md](ENGINE_PROGRAM.md) — thesis, scorecard, five invariants, workstreams W1–W7, milestone ladder M0–M7, decision gates D1–D4, and the evidence policy ("no number without a receipt").
 
 Lanes A and B above are unchanged by it. The engine program does not replace **Q-013D → Q-014 → Q-015 → Q-016**, does not merge engines, and does not touch **BURN-REMOTE-01**. At present **no engine speed claim exists**: offline, CPU-only pieces of Q-026 to Q-031 and Q-038 to Q-042 are implemented and tested, none is integrated into the engine and none has a receipt.
 
@@ -101,9 +101,10 @@ Lanes A and B above are unchanged by it. The engine program does not replace **Q
 | W4 · Supervisor + provider | [Q-040](../quests/Q-040-MULTI-ENGINE-01.md) MULTI-ENGINE-01 · [Q-041](../quests/Q-041-DESKTOP-RESERVE-01.md) DESKTOP-RESERVE-01 |
 | W5 · Evidence + quality | [Q-030](../quests/Q-030-QUALITY-PARITY-01.md) QUALITY-PARITY-01 · [Q-031](../quests/Q-031-ENGINE-PERF-01.md) ENGINE-PERF-01 · [Q-042](../quests/Q-042-PROFILE-SPARK-01.md) PROFILE-SPARK-01 |
 | W6 · Coverage + packaging | [Q-033](../quests/Q-033-MODEL-MATRIX-01.md) MODEL-MATRIX-01 · [Q-034](../quests/Q-034-PACKAGING-01.md) PACKAGING-01 |
+| W7 · Assistant engine | [Q-043](../quests/Q-043-COHOST-01.md) COHOST-01 · [Q-044](../quests/Q-044-VOICE-TURN-01.md) VOICE-TURN-01 · [Q-045](../quests/Q-045-GPU-SHARE-01.md) GPU-SHARE-01 · [Q-046](../quests/Q-046-DRAFT-SPEC-01.md) DRAFT-SPEC-01 · [Q-047](../quests/Q-047-SPEECH-MODELS-01.md) SPEECH-MODELS-01 |
 | Unallocated | [Q-032](../quests/Q-032-RESERVED.md) · [Q-035](../quests/Q-035-RESERVED.md) · [Q-036](../quests/Q-036-RESERVED.md) — reserved numbers, no scope |
 
-Order of work: M0 oracle + baseline (Q-025, Q-030, Q-031) → M1 executor (Q-026, Q-029) → M2 memory (Q-027, Q-028, Q-038) → M3 scheduler (Q-018…Q-021, Q-039) → M4 supervisor (Q-024b, Q-013D→Q-016, Q-040, Q-041) → M5 coverage (Q-033, Q-034) → M6 stretch (Q-037, AMD port). D2 at the end of M1 can legitimately end the Rust-executor bet; the negative result then stays public.
+Order of work: M0 oracle + baseline (Q-025, Q-030, Q-031) → M1 executor (Q-026, Q-029) → M2 memory (Q-027, Q-028, Q-038) → M3 scheduler (Q-018…Q-021, Q-039) → M4 supervisor (Q-024b, Q-013D→Q-016, Q-040, Q-041) → M5 coverage (Q-033, Q-034) → M6 stretch (Q-037, AMD port) → M7 assistant engine (Q-043…Q-047: language model, speech-to-text, text-to-speech and a draft model sharing one desktop card; policy work runs in parallel now). D2 at the end of M1 can legitimately end the Rust-executor bet; the negative result then stays public.
 
 ## Stop and release gates
 

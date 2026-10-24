@@ -61,10 +61,10 @@ The Oct 9 Q-009/WakeKV intake is preserved from a locally signed research commit
 | --- | --- | --- | --- |
 | [Q-017](quests/Q-017-DEEPINFER-DONOR-01.md) · DEEPINFER-DONOR-01 | REFERENCE_PINNED | Content-pinned reference donor only; no build, import, dependency or inference. Five engine-lane experiments (Q-018…Q-023) and the supervisor contract (Q-024) are gated separately. |
 
-## 6. Engine program — PROPOSED (Q-026–Q-042)
+## 6. Engine program — PROPOSED (Q-026–Q-047)
 
 Program of record: [docs/ENGINE_PROGRAM.md](docs/ENGINE_PROGRAM.md). Every row is **PROPOSED**: no
-quest has a measurement, and no engine speed claim is made anywhere in this section. Milestones M0–M6
+quest has a measurement, and no engine speed claim is made anywhere in this section. Milestones M0–M7
 and decision gates D1–D4 are defined in the program page, not repeated here. Q-018…Q-024 remain the
 DeepInfer/provider follow-ons; Q-013-D→Q-016 remain the supervisor gates.
 
@@ -87,6 +87,11 @@ DeepInfer/provider follow-ons; Q-013-D→Q-016 remain the supervisor gates.
 | Q-040 | [MULTI-ENGINE-01](quests/Q-040-MULTI-ENGINE-01.md) | PROPOSED | Three engines behind one supervisor, per-engine profiles, no capability inheritance; supervisor landed against stubs |
 | Q-041 | [DESKTOP-RESERVE-01](quests/Q-041-DESKTOP-RESERVE-01.md) | PROPOSED | Elastic VRAM reserve with a desktop-pressure observer; `NO_XID` gate; state machine landed offline |
 | Q-042 | [PROFILE-SPARK-01](quests/Q-042-PROFILE-SPARK-01.md) | PROPOSED | Per-phase timers behind a flag; single-request timeline exported as evidence; timers wired in the engine (patch 0002), token-neutral on the synthetic fixture, no real profile |
+| Q-043 | [COHOST-01](quests/Q-043-COHOST-01.md) | PROPOSED | W7: several models on one card; MoE expert cache as the elastic budget; broker landed offline, no engine hook |
+| Q-044 | [VOICE-TURN-01](quests/Q-044-VOICE-TURN-01.md) | PROPOSED | W7: voice turn with barge-in and sentence-level speech start; state machine and chunker landed offline |
+| Q-045 | [GPU-SHARE-01](quests/Q-045-GPU-SHARE-01.md) | PROPOSED | W7: audio deadlines vs non-preemptible text steps; EDF admission and simulator landed offline |
+| Q-046 | [DRAFT-SPEC-01](quests/Q-046-DRAFT-SPEC-01.md) | PROPOSED | W7: small draft model gated by a greedy oracle; policy landed offline, no draft run |
+| Q-047 | [SPEECH-MODELS-01](quests/Q-047-SPEECH-MODELS-01.md) | PROPOSED | W7: speech model choice, footprint and WER gates; oracle landed, no clips frozen |
 
 **Current program state (head of `feat/engine-program`, after the `v0.9.0-rc1` tag):** offline,
 CPU-only pieces exist for Q-026, Q-027, Q-028, Q-029, Q-030, Q-031, Q-038, Q-039, Q-040, Q-041 and

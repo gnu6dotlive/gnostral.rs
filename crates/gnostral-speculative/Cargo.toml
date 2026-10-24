@@ -1,0 +1,12 @@
+[package]
+name = "gnostral-speculative"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.94"
+license = "MIT"
+description = "Q-046 draft-model speculation: greedy reference oracle, acceptance tracking, draft-length and keep-the-draft policy"
+publish = false
+
+[workspace]
+
+[dependencies]

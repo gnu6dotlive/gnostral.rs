@@ -1,11 +1,11 @@
 # Engine program — the best local inference engine for constrained hardware
 
-Program of record · **2026-10-23** · State: **PROPOSED**
+Program of record · **2026-10-23**, revised **2026-10-24** (W7) · State: **PROPOSED**
 [QUESTLOG](../QUESTLOG.md) · [Roadmap](ROADMAP.md) · [Capability matrix](CAPABILITY_MATRIX.md) ·
 [Benchmark protocol](BENCHMARK_PROTOCOL.md) · [Evidence model](EVIDENCE_MODEL.md)
 
 > **Source:** `audit/ENGINE-ROADMAP-2026-10-23.md` (program workspace, outside this repository).
-> This page is the in-repository program of record. Quests live in `quests/Q-026…Q-042` and are
+> This page is the in-repository program of record. Quests live in `quests/Q-026…Q-047` and are
 > **PROPOSED** until their own gate produces a receipt.
 
 **No engine speed claim is made on this page.** Every target below is a gate to be measured, not a
@@ -173,6 +173,34 @@ Files: a future `crates/gnostral-serve/` (or fork of server-core), CLI, docs, pa
 
 **Acceptance (M5):** model-matrix receipts, one-command install/server, docs, release.
 
+### W7 — Assistant engine: several models on one desktop card
+
+Program revision 2026-10-24, at the owner's direction. The engine's purpose widens from "one
+model, fast" to "one assistant on one desktop card": a MoE language model, speech-to-text,
+text-to-speech and a small draft model resident together. The MoE expert cache is what makes it
+possible: it is the elastic part of the card that shrinks when speech arrives and grows back when
+it leaves, at a speed cost and never a correctness cost. W7 builds on W2 (elastic expert budget),
+W3 (scheduler, speculation) and W4 (supervisor, desktop reserve); it does not weaken any of their
+gates, and the W1 speed gate (M1) stays the program's first test.
+
+Files: `crates/gnostral-cohost/`, `crates/gnostral-assistant/`, `crates/gnostral-speculative/`,
+`harness/quality/speech_oracle.py`; engine seams in the supervisor (hosting instead of switching),
+the residency budget and the scheduler step cap.
+
+| Quest | Scope |
+| --- | --- |
+| [Q-043](../quests/Q-043-COHOST-01.md) · COHOST-01 | Co-residency broker: core + elastic budgets, class rules, shrink/park plans that never overbook, typed refusals |
+| [Q-044](../quests/Q-044-VOICE-TURN-01.md) · VOICE-TURN-01 | Voice turn state machine with barge-in, speakable chunking, first-audio budget |
+| [Q-045](../quests/Q-045-GPU-SHARE-01.md) · GPU-SHARE-01 | Realtime-first GPU sharing with a non-preemptive EDF admission test and a language-model step cap |
+| [Q-046](../quests/Q-046-DRAFT-SPEC-01.md) · DRAFT-SPEC-01 | Draft-model speculation gated by a greedy oracle; draft length and keep/park policy |
+| [Q-047](../quests/Q-047-SPEECH-MODELS-01.md) · SPEECH-MODELS-01 | Speech model choice, footprint, and WER gates (STT direct, TTS by round trip) |
+
+**Acceptance (M7):** language model plus speech-to-text plus text-to-speech resident within the
+envelope (whole-card peak, desktop reserve, `NO_XID`); zero audio deadline misses over the frozen
+voice protocol; first-audio p95 within target; language-model tokens identical to solo at every
+cache size; speech WER within frozen thresholds; throughput cost of co-hosting reported, all
+samples kept.
+
 ### Unallocated slots
 
 `Q-032`, `Q-035` and `Q-036` are reserved by the source audit's numbering but **no workstream,
@@ -193,6 +221,7 @@ rough estimate, not a delivery schedule.
 | **M4** | Supervisor + provider | Q-024b, Q-013-D, Q-014, Q-015, Q-016, Q-040 | two engines, A→B→A, admission denies UNKNOWN, stream/cancel, SLO receipt | 6–8 weeks (parallel) |
 | **M5** | Coverage + packaging | Q-033, Q-034 | model matrix receipts, one-command install/server, docs, release | 4–6 weeks |
 | **M6** | Stretch | Q-037, AMD port, multi-GPU | only if earlier gates are met | ongoing |
+| **M7** | Assistant engine | Q-043, Q-044, Q-045, Q-046, Q-047 | co-resident LM + STT + TTS within the envelope; zero audio misses; first-audio p95 target; tokens identical at every cache size; WER gates; `NO_XID` | after M2 and M4 hooks; policy work in parallel now |
 
 M1 and M2 are the make-or-break phase. M3–M5 can run in parallel once the executor API is stable:
 the supervisor lane does not depend on engine internals.
@@ -273,6 +302,10 @@ receipt exists.
 | `crates/gnostral-trace/` (Q-042) | Implemented and tested offline (7 tests): off-by-default per-phase timers, allocation-free recording, wall-time reconciliation (interval union) with explicit `UNKNOWN`, measured overhead, JSON receipt. Wired into the engine by patch `0002` (schedule, forward, sample, cpu_expert); exercised only on the synthetic CPU fixture; no profile of a real model exists |
 | `harness/quality/` (Q-030) | Implemented and tested offline (41 tests): parity, KL (CLI default now `1e-3`), PIT/KS, plus the frozen 32-prompt gate set `q030-32-20261023` (`c573a8d8...1787e`), frozen thresholds `q030-gates-20261023`, a divergence ledger and a full `gate` receipt (BLOCKED / FAIL / INCOMPLETE / PASS). No capture from any engine exists; Q-025 prompt-byte reconciliation is open |
 | `harness/bench/` (Q-031) | Implemented and tested offline (42 tests): receipt validator, Pareto comparator, receipt encoder and the `run` lane driver (identity pins, 1 warmup, interleaved repetitions, every run kept, blocked lanes abort the comparison only). No real lane has been run |
+| `crates/gnostral-cohost/` (Q-043) | Implemented and tested offline (7 tests): co-residency broker over the memory-plan envelope, core and elastic budgets, class rules, shrink/park/regrow plans checked step by step against capacity over 200 random sequences, typed refusals that change nothing, receipts. Branch `feat/assistant-engine`; no engine hook |
+| `crates/gnostral-assistant/` (Q-044/Q-045) | Implemented and tested offline (9 tests): voice turn state machine with barge-in, lossless speakable chunking, first-audio budget; non-preemptive EDF admission (processor-demand test with blocking) validated by simulation on over 500 admitted random stream sets with zero misses. A first, simpler bound was rejected by that test. No audio, no model |
+| `crates/gnostral-speculative/` (Q-046) | Implemented and tested offline (5 tests): greedy speculation oracle token-identical to plain greedy for any draft, acceptance tracker, draft-length and keep-draft policy. No draft model run |
+| `harness/quality/speech_oracle.py` (Q-047) | Implemented and tested offline (4 tests): normalisation, WER alignment, corpus gate with `BLOCKED` rules. No clip set frozen, no speech model run |
 | Q-037 prefetch | **Deliberately not started**: its gate forbids writing prefetch before a Q-042 profile shows upload stalls matter |
 | Q-033, Q-034 | **Not started** (W6, after the engine is fast and correct) |
 | Q-032, Q-035, Q-036 | Reserved; no scope assigned |

@@ -1,0 +1,13 @@
+[package]
+name = "gnostral-cohost"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.94"
+license = "MIT"
+description = "Q-043 multi-model co-residency on one card: core and elastic budgets, shrink/park plans without transient overbooking, typed refusals"
+publish = false
+
+[workspace]
+
+[dependencies]
+gnostral-memory-plan = { path = "../gnostral-memory-plan" }
