@@ -17,7 +17,7 @@ sys.path.insert(0, str(HERE.parent / "synthetic-moe"))
 import gguf_inventory as inv  # noqa: E402
 import make_qwen3moe_gguf as maker  # noqa: E402
 
-Q4_K, IQ4_XS = 12, 23
+Q4_K, IQ4_XS, MXFP4 = 12, 23, 39
 
 
 def synthetic(path: Path, layers: int = 2) -> dict:
@@ -68,7 +68,8 @@ class InventoryTests(unittest.TestCase):
         doc = inv.inventory([self.tmp / "m.gguf"])
         self.assertEqual(doc["architecture"], "qwen3moe")
         self.assertTrue(doc["verdict"].startswith("GNOSTRAL_KERNEL"), doc["verdict"])
-        self.assertTrue(doc["native_sizing_patched"])
+        self.assertTrue(doc["architecture_known_to_engine"])
+        self.assertTrue(doc["expert_residency_architecture"])
         self.assertEqual(doc["routed_expert_paths"], {"gnostral_kernel": [0, 1]})
         self.assertEqual(doc["hyperparameters"]["qwen3moe.expert_count"], 4)
         e, h, i = info["experts"], info["hidden"], info["moe_inter"]
@@ -94,13 +95,36 @@ class InventoryTests(unittest.TestCase):
         self.assertTrue(doc["verdict"].startswith("REFUSED_AT_LOAD"), doc["verdict"])
         self.assertEqual(doc["types_refused_at_load"], ["IQ4_XS"])
         self.assertEqual(doc["routed_expert_paths"], {"refused_at_load": [0]})
-        self.assertFalse(doc["native_sizing_patched"])
+        self.assertTrue(doc["architecture_known_to_engine"])
+        self.assertFalse(doc["expert_residency_architecture"])
 
     def test_q4_k_experts_take_the_candle_kernel(self) -> None:
         expert_model(self.tmp / "m.gguf", "qwen3moe", Q4_K, Q4_K)
         doc = inv.inventory([self.tmp / "m.gguf"])
         self.assertEqual(doc["routed_expert_paths"], {"residency_candle_kernel": [0]})
         self.assertTrue(doc["verdict"].startswith("PARTIAL"), doc["verdict"])
+
+    def test_qwen35moe_loads_without_the_program(self) -> None:
+        expert_model(self.tmp / "m.gguf", "qwen35moe", Q4_K, Q4_K)
+        doc = inv.inventory([self.tmp / "m.gguf"])
+        self.assertEqual(doc["routed_expert_paths"], {"loads_no_residency_for_architecture": [0]})
+        self.assertTrue(doc["verdict"].startswith("LOADS_WITHOUT_PROGRAM"), doc["verdict"])
+
+    def test_mxfp4_experts_load_only_for_gpt_oss(self) -> None:
+        expert_model(self.tmp / "g.gguf", "gpt-oss", MXFP4, MXFP4)
+        doc = inv.inventory([self.tmp / "g.gguf"])
+        self.assertEqual(doc["types_refused_at_load"], [])
+        self.assertTrue(doc["verdict"].startswith("LOADS_WITHOUT_PROGRAM"), doc["verdict"])
+        expert_model(self.tmp / "q.gguf", "qwen3moe", MXFP4, MXFP4)
+        doc = inv.inventory([self.tmp / "q.gguf"])
+        self.assertEqual(doc["types_refused_at_load"], ["MXFP4"])
+        self.assertEqual(doc["routed_expert_paths"], {"refused_at_load": [0]})
+
+    def test_unknown_architecture_is_named(self) -> None:
+        expert_model(self.tmp / "m.gguf", "mystery", 10, 11)
+        doc = inv.inventory([self.tmp / "m.gguf"])
+        self.assertFalse(doc["architecture_known_to_engine"])
+        self.assertEqual(doc["verdict"], "UNKNOWN_ARCHITECTURE: the engine's native GGUF registry has no `mystery`")
 
     def test_large_arrays_are_counted_not_kept(self) -> None:
         expert_model(self.tmp / "m.gguf", "qwen3moe", 10, 11)

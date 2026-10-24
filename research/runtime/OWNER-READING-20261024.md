@@ -63,3 +63,24 @@ adding `W_R = 0` and fine-tuning is proposed, not tested.
 7. **Not actionable, worth remembering:** the typo-robustness result concerns the kind of noise an STT
    front end feeds an LLM, but it is measured at 124M-354M and does not say which deployable models are
    Muon-trained.
+
+## Update: the owner's full report (same day)
+
+Source: *Rapport complet, IA locale sur RTX 3070 (8 Go) + 32 Go RAM, octobre 2026*, 21 pages, read in
+full; outside this repository. It merges the survey above with ten more categories (3D, formal maths,
+OCR, embeddings, music and others). Its LLM recommendation is unchanged: Qwen3.6-35B-A3B with experts in
+RAM. Checked against the engine sources, what it changes for the program:
+
+1. **The machine is pinned down:** RTX 3070, 8 GB shared with the display, about 6.5-7 GB usable (the
+   report's estimate), 32 GB RAM. Ampere has no FP8/NVFP4 acceleration, so GGUF or FP16/BF16 weights.
+2. **The program's engine work covers one architecture** (F-027): residency, kernels and sizing exist
+   for `qwen3moe` only. Of the report's candidates, Qwen3-Coder-30B-A3B (19 GB, its agents pick) and
+   Qwen3-30B-A3B are `qwen3moe`; Qwen3.6-35B-A3B (expected `qwen35moe`, to be confirmed by the inventory),
+   LFM2.5-24B-A2B (`lfm2moe`) and gpt-oss-20b (`gpt-oss`, MXFP4 experts) load as plain mistral.rs models.
+   LFM2.5-8B-A1B (about 5 GB) fits the card whole and needs no offload.
+3. **Its first recommendation is the cohost broker's workload** (Q-043): one large GPU model at a time,
+   OCR (about 2 GB), embedding plus reranker (about 2 GB) and micro-LLMs kept in VRAM, MoE experts in RAM.
+   On 6.5-7 GB usable that leaves about 2.5-3 GB for the MoE's attention, KV and expert cache. Those are
+   the report's estimates; the broker's admission test is where they get checked, not assumed.
+4. **Its voice architecture matches W7:** a VAD, STT, LLM, TTS cascade (Pipecat), because no omni
+   "talker" is served well locally. The voice turn machine (Q-044) assumes the same cascade.

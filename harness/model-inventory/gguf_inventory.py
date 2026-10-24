@@ -3,7 +3,8 @@
 Reads the header of one or more GGUF files (shards of one model) without touching
 the tensor data, so a 20 GB model is inventoried in seconds, and prints:
 
-- the architecture and every `<arch>.*` scalar hyperparameter;
+- the architecture, whether the engine's GGUF registry knows it and whether expert residency
+  covers it, and every `<arch>.*` scalar hyperparameter;
 - per tensor class (routed experts, shared experts, attention, linear-attention/SSM,
   embeddings and output, norms, other) the tensor count and bytes per GGML type;
 - for every routed-expert projection, which engine path can run it;
@@ -42,17 +43,30 @@ GGML_TYPES = {
 }
 
 SOURCES = {
-    "engine_load": "vendor/mistralrs-strata/mistralrs-quant/src/gguf/archive.rs GgufDType::candle_dtype",
+    "architectures": "vendor/mistralrs-strata/mistralrs-core/src/gguf/normal_registry.rs CanonicalGgufArchitecture",
+    "engine_load": "vendor/mistralrs-strata/mistralrs-quant/src/gguf/archive.rs GgufDType::candle_dtype "
+                   "(and weight_source.rs test unsupported_dtypes_are_rejected_at_construction)",
+    "mxfp4_experts": "vendor/mistralrs-strata/mistralrs-core/src/gguf/normal_bindings.rs bind_block_tensor "
+                     "(gpt-oss routed experts only)",
+    "residency_architecture": "vendor/mistralrs-strata/mistralrs-core/src/pipeline/normal.rs residency pilot gate "
+                              "(Qwen3MoeForCausalLM from a GGUF, no adapters, no ISQ)",
     "residency": "vendor/mistralrs-strata/mistralrs-core/src/moe/experts/residency.rs expert stack dtype check",
     "gnostral_kernel": "vendor/mistralrs-strata/mistralrs-core/src/moe/experts/residency.rs gnostral_host_ffn",
     "native_sizing": "patches/engine-program/0007 (Qwen3MoELoader::layer_sizes_in_bytes)",
 }
+ENGINE_ARCHS = {
+    "llama", "mistral3", "gemma", "gemma2", "phi2", "phi3", "phimoe", "qwen2", "qwen3", "qwen3moe",
+    "qwen3next", "qwen35", "qwen35moe", "starcoder2", "deepseek2", "glm4", "glm4moe", "smollm3", "granite",
+    "granitemoe", "granitehybrid", "gpt-oss", "hunyuan-dense", "hunyuan-moe", "lfm2", "lfm2moe",
+}
 # Types `candle_dtype` maps; every other type fails the load. 142/143 are lab formats the public
 # candle reconstruction refuses (BUILD-ONLY), so they are not counted as loadable here.
 ENGINE_LOAD = {0, 1, 2, 3, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 30}
+# Extra types loadable for routed-expert tensors of one architecture, through a dedicated binding.
+EXPERT_LOAD_BY_ARCH = {"gpt-oss": {39}}
 RESIDENCY = {10, 11, 12, 13, 14, 2, 3, 6, 7, 8}
+RESIDENCY_ARCHS = {"qwen3moe"}
 GNOSTRAL_KERNEL = {10, 11}
-NATIVE_SIZING_ARCHS = {"qwen3moe"}
 
 VALUE_FORMATS = {0: "B", 1: "b", 2: "H", 3: "h", 4: "I", 5: "i", 6: "f", 7: "?", 10: "Q", 11: "q", 12: "d"}
 T_STRING, T_ARRAY = 8, 9
@@ -173,12 +187,18 @@ def tensor_class(name: str) -> str:
     return "other"
 
 
-def expert_path(gate: int | None, up: int | None, down: int | None) -> str:
+def loadable(ggml_type: int, arch: str | None, routed_expert: bool) -> bool:
+    return ggml_type in ENGINE_LOAD or (routed_expert and ggml_type in EXPERT_LOAD_BY_ARCH.get(arch, set()))
+
+
+def expert_path(arch: str | None, gate: int | None, up: int | None, down: int | None) -> str:
     types = [t for t in (gate, up, down) if t is not None]
-    if any(t not in ENGINE_LOAD for t in types):
+    if any(not loadable(t, arch, True) for t in types):
         return "refused_at_load"
+    if arch not in RESIDENCY_ARCHS:
+        return "loads_no_residency_for_architecture"
     if any(t not in RESIDENCY for t in types):
-        return "loads_without_residency"
+        return "loads_residency_refuses_types"
     if gate in GNOSTRAL_KERNEL and up == gate and down in GNOSTRAL_KERNEL:
         return "gnostral_kernel"
     return "residency_candle_kernel"
@@ -211,10 +231,10 @@ def inventory(paths: list[Path]) -> dict:
         if "gate_up" in proj:
             paths_by_layer[layer] = "fused_gate_up_unchecked"
         else:
-            paths_by_layer[layer] = expert_path(proj.get("gate"), proj.get("up"), proj.get("down"))
+            paths_by_layer[layer] = expert_path(arch, proj.get("gate"), proj.get("up"), proj.get("down"))
     verdicts = sorted(set(paths_by_layer.values()))
-    load_refused = sorted({GGML_TYPES.get(t["type"], (f"type{t['type']}",))[0]
-                           for t in tensors if t["type"] not in ENGINE_LOAD})
+    load_refused = sorted({GGML_TYPES.get(t["type"], (f"type{t['type']}",))[0] for t in tensors
+                           if not loadable(t["type"], arch, bool(ROUTED.match(t["name"])))})
     return {
         "schema": "gnostral.gguf-inventory/1",
         "files": [str(p) for p in paths],
@@ -228,20 +248,25 @@ def inventory(paths: list[Path]) -> dict:
         "routed_expert_paths": {v: [l for l, p in paths_by_layer.items() if p == v] for v in verdicts},
         "types_refused_at_load": load_refused,
         "unknown_types": sorted(unknown_types),
-        "native_sizing_patched": arch in NATIVE_SIZING_ARCHS,
+        "architecture_known_to_engine": arch in ENGINE_ARCHS,
+        "expert_residency_architecture": arch in RESIDENCY_ARCHS,
         "support_sources": SOURCES,
         "verdict": verdict(load_refused, verdicts, arch),
     }
 
 
 def verdict(load_refused: list[str], paths: list[str], arch: str | None) -> str:
+    if arch not in ENGINE_ARCHS:
+        return f"UNKNOWN_ARCHITECTURE: the engine's native GGUF registry has no `{arch}`"
     if load_refused:
         return "REFUSED_AT_LOAD: this engine tree cannot load " + ", ".join(load_refused)
     if not paths:
         return "NO_ROUTED_EXPERTS: not a MoE layout this tool recognises"
     if paths == ["gnostral_kernel"]:
-        tail = "" if arch in NATIVE_SIZING_ARCHS else f"; device-map sizing for {arch} is not patched (0007 covers qwen3moe)"
-        return "GNOSTRAL_KERNEL: every expert layer runs on the Q-029 kernels" + tail
+        return "GNOSTRAL_KERNEL: every expert layer runs on the Q-029 kernels"
+    if paths == ["loads_no_residency_for_architecture"]:
+        return (f"LOADS_WITHOUT_PROGRAM: `{arch}` loads, but expert residency, the Q-029 kernels and the 0007 "
+                "sizing cover qwen3moe only")
     return "PARTIAL: expert paths " + ", ".join(paths)
 
 
