@@ -248,6 +248,53 @@ Rules:
   vectorised version can stay bit-identical; it is a Phase 3 candidate, to be done with the existing
   intrinsics-transcription tests as the gate.
 
+### F-024 · 2026-10-24 · The bit-exact path is now faster than the native one, and still bit-exact
+
+- **Class:** OBSERVED (same VM, same session, before and after binaries interleaved); bit equality PROVEN
+  by tests against candle itself and end to end.
+- **What:** Phase 3a moved the `CandleCompat` combination (F-023) into one `target_feature` function per
+  row, with candle's FMA order and `hsum_float_8`. Per block, AVX-512: `Q2_K` 56.9 -> 9.9 ns, `Q3_K` 33.6
+  -> 19.3 ns; AVX2: 59.7 -> 10.7 and 37.8 -> 21.7 ns. Expert layer of Qwen3-30B-A3B geometry (8 experts
+  rotating from 128, one token): 2 threads 5.53 -> 2.24 ms, 4 threads 3.15 -> 1.50 ms, ranges disjoint.
+  Against ggml's 1.01-1.03 ms at 2 threads (F-021), the engine's lane goes from about 5.4x to 2.2x behind.
+- **Bit equality:** the crate's transcription tests pass, and both deliberate mutations (FMAs swapped,
+  sequential horizontal sum) make them fail; the engine test `gnostral_cpu_kernel_is_bit_equal_to_candle`
+  passes; on the synthetic fixture every lane's 1024 tokens and 2048 logprob entries are bit-identical to
+  the committed four-lane evidence (only the binary hash differs).
+- **Not shown:** an end-to-end speed change. The earlier fixture run is from another session and the
+  fixture is too small for the kernel to dominate (F-017). The lab's M1 run is where it can show.
+- **Evidence:** `evidence/runs/kernel-candlecompat-vectorised-20261024/`.
+
+### F-025 · 2026-10-24 · The native path pays per-block overhead the fast path does not
+
+- **Class:** OBSERVED (same VM) for the numbers; INFERRED for the cause, from the code.
+- **What:** after F-024 the `Native` numerics (18.4 ns per `Q2_K` block) is about 2x slower than
+  `CandleCompat` (9.9 ns) although it does no more arithmetic. Native calls a lane function per block
+  through a `target_feature` boundary that cannot inline, stores the eight lanes to memory, sums them in
+  scalar code and computes `summs` over 16 scalar products. A whole-row native loop would keep integer
+  sums exact, so it can be bit-identical to today's native output. Native is not on the engine's path
+  (the engine uses `CandleCompat`), so this is recorded, not scheduled.
+- **Process (PROCESS):** the same unchanged native AVX2 dot measured 37.2 ns in one session (F-021
+  evidence) and 20.6 ns in this one, on VMs reporting the same CPU model. Microbenchmark numbers from
+  different sessions are not comparable; only interleaved before/after in one session is evidence of a
+  change.
+
+### F-026 · 2026-10-24 · The owner's new target model may not load in this engine tree
+
+- **Class:** OBSERVED from source for the engine; UNKNOWN for the model until its file is inventoried.
+- **What:** the owner's survey of 2026-10-24 (8 GB VRAM, 32 GB RAM; a document outside this repository,
+  its figures not measured here) names Qwen3.6-35B-A3B in Unsloth `UD-IQ4_XS` (16.5 GiB by its count) as
+  the LLM to use, replacing Qwen3-30B-A3B. In this tree:
+  - `mistralrs-quant/src/gguf/archive.rs` `candle_dtype` maps only F32, F16, BF16, Q4_0, Q4_1, Q5_0, Q5_1,
+    Q8_0, Q8_1 and Q2_K to Q8_K; every other type, `IQ4_XS` (23) included, fails the load;
+  - expert residency accepts Q2_K to Q6_K, Q4_0, Q4_1, Q5_0, Q5_1 and Q8_0; the Q-029 kernels (and the
+    gain in F-024) cover Q2_K and Q3_K only, other types run candle's kernels;
+  - patch `0007`'s device-map sizing covers the `qwen3moe` loader; the engine has separate `qwen3next`
+    and `qwen3_5_moe` (hybrid linear and full attention) paths that the program has not touched.
+- **Not known:** Qwen3.6's GGUF architecture string and which types an `UD-IQ4_XS` file actually holds
+  per tensor. `harness/model-inventory/gguf_inventory.py` answers both from the header in seconds;
+  it has to run on the lab's copy of the file before any engineering is chosen for this model.
+
 ## Evidence not yet in the repository
 
 These directories exist on the lab disk only. Until they are committed they are not program

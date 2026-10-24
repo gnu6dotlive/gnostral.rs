@@ -103,6 +103,8 @@ jobs:
         run: python3 -m unittest discover -s harness/quality -p 'test_*.py'
       - name: Synthetic MoE GGUF fixture writer
         run: python3 -m unittest discover -s harness/synthetic-moe -p 'test_*.py'
+      - name: GGUF model inventory (F-026)
+        run: python3 -m unittest discover -s harness/model-inventory -p 'test_*.py'
       - name: Script gates
         run: python3 -m unittest discover -s scripts -p 'test_*.py'
       - name: Documentation links
