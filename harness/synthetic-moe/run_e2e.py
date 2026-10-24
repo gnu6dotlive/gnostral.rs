@@ -198,7 +198,7 @@ def summarise(out: Path, config: str, cfg: dict, bench: subprocess.CompletedProc
             lane["verdict_vs_baseline"] = "slower"
         else:
             lane["verdict_vs_baseline"] = "inconclusive (ranges overlap)"
-    return {"config": config, "cache_bytes": cfg["cache_bytes"], "profile": str(cfg["profile"]),
+    return {"config": config, "profile_sample": cfg.get("profile_sample"), "cache_bytes": cfg["cache_bytes"], "profile": str(cfg["profile"]),
             "bench_exit": bench.returncode, "baseline": order[0] if order else None, "lanes": lanes}
 
 
@@ -296,6 +296,10 @@ def main() -> int:
                         "(give --layers/--experts/--moe-inter/--hidden of that model)")
     parser.add_argument("--cpu-experts-only", action="store_true",
                         help="skip the recording pass and the mixed configuration")
+    parser.add_argument("--mixed-only", action="store_true", help="run only the mixed configuration")
+    parser.add_argument("--record-manifest", type=Path,
+                        help="prompt set for the recording pass (default: the frozen set, which is in-sample)")
+    parser.add_argument("--record-max-tokens", type=int, default=64)
     parser.add_argument("--mixed-bytes", type=int, help="explicit expert budget for the mixed configuration")
     parser.add_argument("--hidden", type=int, default=512)
     parser.add_argument("--layers", type=int, default=2)
@@ -344,11 +348,15 @@ def main() -> int:
     # Configuration 1: every expert on the CPU (budget of one byte, empty ranking).
     cpu_cfg = {"cache_bytes": 1, "profile": empty}
     configs = [("cpu-experts", cpu_cfg)]
-    if args.cpu_experts_only:
+    if args.cpu_experts_only and not args.mixed_only:
         return finish(args, out, geometry, model, model_sha, configs)
     # Recording pass: count observed expert demand on the frozen workload.
     recorded = out / "profile-recorded.json"
-    record = capture(args, out, cpu_cfg, "per-route", out / "capture-record.json",
+    record_args = args
+    if args.record_manifest:
+        record_args = argparse.Namespace(**{**vars(args), "manifest": args.record_manifest,
+                                            "max_tokens": args.record_max_tokens})
+    record = capture(record_args, out, cpu_cfg, "per-route", out / "capture-record.json",
                      {"GNOSTRAL_EXPERT_PROFILE_OUT": str(recorded)})
     if record.returncode != 0 or not recorded.exists():
         sys.stderr.write(record.stderr[-4000:])
@@ -356,6 +364,9 @@ def main() -> int:
     # Configuration 2: the recorded profile with a real budget.
     mixed_cfg = {"cache_bytes": args.mixed_bytes or int(expert_bytes(geometry) * args.mixed_fraction), "profile": recorded}
 
+    mixed_cfg["profile_sample"] = "out-of-sample" if args.record_manifest else "in-sample"
+    if args.mixed_only:
+        configs = []
     return finish(args, out, geometry, model, model_sha, configs + [("mixed-experts", mixed_cfg)])
 
 

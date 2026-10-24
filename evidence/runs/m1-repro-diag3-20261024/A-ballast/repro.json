@@ -1,0 +1,160 @@
+{
+  "binary_sha256": "0b1677fac814c88b387b905e0f7792a85844e6314c49351bd3beed5553f5ac35",
+  "model_sha256": "db3ce897ccc9e7d9dbf17fe083cae7880a2092aa473b45eba8b77715aa9ca170",
+  "max_tokens": 32,
+  "rows": [
+    {
+      "config": "A",
+      "prompt_id": "q04-units",
+      "first_logprob_diff_idx": null,
+      "first_token_diff_idx": null,
+      "gap_prev_run1": null,
+      "gap_prev_run2": null,
+      "gap_at_div_run1": null,
+      "gap_at_div_run2": null,
+      "max_logprob_diff_before_div": 0.0,
+      "device_map_run1": [
+        "Layers 0-47: cuda[0]"
+      ],
+      "device_map_run2": [
+        "Layers 0-47: cuda[0]"
+      ]
+    },
+    {
+      "config": "A",
+      "prompt_id": "q07-sql",
+      "first_logprob_diff_idx": null,
+      "first_token_diff_idx": null,
+      "gap_prev_run1": null,
+      "gap_prev_run2": null,
+      "gap_at_div_run1": null,
+      "gap_at_div_run2": null,
+      "max_logprob_diff_before_div": 0.0,
+      "device_map_run1": [
+        "Layers 0-47: cuda[0]"
+      ],
+      "device_map_run2": [
+        "Layers 0-47: cuda[0]"
+      ]
+    },
+    {
+      "config": "A",
+      "prompt_id": "q09-bug",
+      "first_logprob_diff_idx": null,
+      "first_token_diff_idx": null,
+      "gap_prev_run1": null,
+      "gap_prev_run2": null,
+      "gap_at_div_run1": null,
+      "gap_at_div_run2": null,
+      "max_logprob_diff_before_div": 0.0,
+      "device_map_run1": [
+        "Layers 0-47: cuda[0]"
+      ],
+      "device_map_run2": [
+        "Layers 0-47: cuda[0]"
+      ]
+    },
+    {
+      "config": "A",
+      "prompt_id": "q10-fr-explain",
+      "first_logprob_diff_idx": null,
+      "first_token_diff_idx": null,
+      "gap_prev_run1": null,
+      "gap_prev_run2": null,
+      "gap_at_div_run1": null,
+      "gap_at_div_run2": null,
+      "max_logprob_diff_before_div": 0.0,
+      "device_map_run1": [
+        "Layers 0-47: cuda[0]"
+      ],
+      "device_map_run2": [
+        "Layers 0-47: cuda[0]"
+      ]
+    },
+    {
+      "config": "A",
+      "prompt_id": "q11-fr-translate",
+      "first_logprob_diff_idx": null,
+      "first_token_diff_idx": null,
+      "gap_prev_run1": null,
+      "gap_prev_run2": null,
+      "gap_at_div_run1": null,
+      "gap_at_div_run2": null,
+      "max_logprob_diff_before_div": 0.0,
+      "device_map_run1": [
+        "Layers 0-47: cuda[0]"
+      ],
+      "device_map_run2": [
+        "Layers 0-47: cuda[0]"
+      ]
+    },
+    {
+      "config": "A",
+      "prompt_id": "q19-summary-tech",
+      "first_logprob_diff_idx": null,
+      "first_token_diff_idx": null,
+      "gap_prev_run1": null,
+      "gap_prev_run2": null,
+      "gap_at_div_run1": null,
+      "gap_at_div_run2": null,
+      "max_logprob_diff_before_div": 0.0,
+      "device_map_run1": [
+        "Layers 0-47: cuda[0]"
+      ],
+      "device_map_run2": [
+        "Layers 0-47: cuda[0]"
+      ]
+    },
+    {
+      "config": "A",
+      "prompt_id": "q27-science",
+      "first_logprob_diff_idx": null,
+      "first_token_diff_idx": null,
+      "gap_prev_run1": null,
+      "gap_prev_run2": null,
+      "gap_at_div_run1": null,
+      "gap_at_div_run2": null,
+      "max_logprob_diff_before_div": 0.0,
+      "device_map_run1": [
+        "Layers 0-47: cuda[0]"
+      ],
+      "device_map_run2": [
+        "Layers 0-47: cuda[0]"
+      ]
+    },
+    {
+      "config": "A",
+      "prompt_id": "q29-code-explain",
+      "first_logprob_diff_idx": null,
+      "first_token_diff_idx": null,
+      "gap_prev_run1": null,
+      "gap_prev_run2": null,
+      "gap_at_div_run1": null,
+      "gap_at_div_run2": null,
+      "max_logprob_diff_before_div": 0.0,
+      "device_map_run1": [
+        "Layers 0-47: cuda[0]"
+      ],
+      "device_map_run2": [
+        "Layers 0-47: cuda[0]"
+      ]
+    },
+    {
+      "config": "A",
+      "prompt_id": "q32-refusal-boundary",
+      "first_logprob_diff_idx": null,
+      "first_token_diff_idx": null,
+      "gap_prev_run1": null,
+      "gap_prev_run2": null,
+      "gap_at_div_run1": null,
+      "gap_at_div_run2": null,
+      "max_logprob_diff_before_div": 0.0,
+      "device_map_run1": [
+        "Layers 0-47: cuda[0]"
+      ],
+      "device_map_run2": [
+        "Layers 0-47: cuda[0]"
+      ]
+    }
+  ]
+}
