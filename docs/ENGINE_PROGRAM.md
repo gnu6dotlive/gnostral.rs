@@ -277,6 +277,7 @@ receipt exists.
 | Q-037 prefetch | **Deliberately not started**: its gate forbids writing prefetch before a Q-042 profile shows upload stalls matter |
 | Q-033, Q-034 | **Not started** (W6, after the engine is fast and correct) |
 | Q-032, Q-035, Q-036 | Reserved; no scope assigned |
+| `harness/lanes/` (Q-025/Q-031) | Shared lane plumbing and the llama.cpp lane (parity class `self`), tested against a fake server and run once against a real `llama-server` b11857 on the synthetic fixture: placement pinned, self-reproduction on every run ([receipt](../evidence/runs/synthetic-moe-four-lane-cpu-20261024/summary.json)). Not yet run on the real model |
 | `harness/diag/repro_capture.py` | Captures the same prompts twice per configuration and compares tokens, logprob bits and the logged device map; produced the F-010 matrix |
 | [FINDINGS.md](FINDINGS.md) | Append-only journal of what the program learned, including rejected fixes and process errors |
 | Engine speed claims | **None.** Synthetic-fixture timings exist and are labelled as such; no real-model benchmark qualifies |

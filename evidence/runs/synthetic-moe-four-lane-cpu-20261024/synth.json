@@ -1,0 +1,11 @@
+{
+  "path": "/tmp/claude-0/-home-user/a0b4c4df-3cc8-5058-8f48-bdead3f347a3/scratchpad/e2e-v2-llama2/synth.gguf",
+  "sha256": "d1dc2d729d88ae81dca24bfbe40a825d3c0aad37e299169e5f17f17ba9abce50",
+  "layers": 2,
+  "experts": 16,
+  "top_k": 4,
+  "hidden": 512,
+  "moe_inter": 256,
+  "vocab": 258,
+  "seed": 20261023
+}

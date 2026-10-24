@@ -1,0 +1,128 @@
+{
+  "schema": "gnostral.rs/evidence-summary/1",
+  "date": "2026-10-24",
+  "claim_class": "OBSERVED",
+  "scope": "Plumbing of bench plan v2 on a random 2-layer Qwen3-MoE fixture, CPU only, cloud container (4-core Xeon with AVX-512, no NVIDIA driver). Proves placement pinning, self-reproducibility and the llama.cpp lane end to end. Timings are on a noise model and say nothing about engine performance.",
+  "model": {
+    "generator": "harness/synthetic-moe/make_qwen3moe_gguf.py (byte tokens typed NORMAL, FINDINGS F-018)",
+    "sha256": "d1dc2d729d88ae81dca24bfbe40a825d3c0aad37e299169e5f17f17ba9abce50",
+    "retained": false,
+    "reason": "regenerable from the generator and seed 20261023"
+  },
+  "binaries": {
+    "gnostral_capture_sha256": "9e668e6ec966ba45d22a1d9a240f1338a05090b5f0e3c4dbb74fb09d9663471e",
+    "gnostral_capture_engine": "public mistral.rs 24dbf5c + strata integration + engine-program patches 0001-0008, public candle reconstruction (BUILD-ONLY)",
+    "llama_server_sha256": "9dc65e6486656825d60598f213e6df2b4b4406cec9d92922ddcbc02b646f5b4a",
+    "llama_cpp": {
+      "tag": "b11857",
+      "commit": "701fd25b3a55a90297dec0d925204b29084054c8",
+      "cmake": "-DCMAKE_BUILD_TYPE=Release -DLLAMA_CURL=OFF -DGGML_NATIVE=ON (shared libraries)"
+    },
+    "gnostral_bench_sha256": "84ea4699dbd0acfb49d7387f35cb3fc73d7ad63e3e82e04dfac15bb9fca91a59"
+  },
+  "driver_status": "UNKNOWN",
+  "comparison": [
+    "per-route: driver status is UNKNOWN, expected NO_XID",
+    "grouped: driver status is UNKNOWN, expected NO_XID",
+    "gnostral: driver status is UNKNOWN, expected NO_XID",
+    "llama.cpp: driver status is UNKNOWN, expected NO_XID"
+  ],
+  "lanes": {
+    "per-route": {
+      "placement": [
+        "0-1:cpu;nm=cpu"
+      ],
+      "self_reproducibility": [
+        "warmup:REFERENCE",
+        "measured:PASS",
+        "measured:PASS",
+        "measured:PASS"
+      ],
+      "decode_tok_s": [
+        915.1,
+        819.9,
+        894.3
+      ],
+      "agreement": null,
+      "decode_range": [
+        819.9,
+        915.1
+      ]
+    },
+    "grouped": {
+      "placement": [
+        "0-1:cpu;nm=cpu"
+      ],
+      "self_reproducibility": [
+        "warmup:REFERENCE",
+        "measured:PASS",
+        "measured:PASS",
+        "measured:PASS"
+      ],
+      "decode_tok_s": [
+        770.5,
+        838.7,
+        870.0
+      ],
+      "agreement": null,
+      "decode_range": [
+        770.5,
+        870.0
+      ]
+    },
+    "gnostral": {
+      "placement": [
+        "0-1:cpu;nm=cpu"
+      ],
+      "self_reproducibility": [
+        "warmup:REFERENCE",
+        "measured:PASS",
+        "measured:PASS",
+        "measured:PASS"
+      ],
+      "decode_tok_s": [
+        459.0,
+        453.7,
+        437.6
+      ],
+      "agreement": null,
+      "decode_range": [
+        437.6,
+        459.0
+      ]
+    },
+    "llama.cpp": {
+      "placement": [
+        "llama.cpp offloaded=none cpu_moe=on"
+      ],
+      "self_reproducibility": [
+        "warmup:REFERENCE",
+        "measured:PASS",
+        "measured:PASS",
+        "measured:PASS"
+      ],
+      "decode_tok_s": [
+        3134.3,
+        2487.8,
+        2635.1
+      ],
+      "agreement": {
+        "reference": "per-route",
+        "prompts": 32,
+        "prompts_identical": 18,
+        "token_agreement": 0.7744140625,
+        "blocked": 0
+      },
+      "decode_range": [
+        2487.8,
+        3134.3
+      ]
+    }
+  },
+  "observations": [
+    "every run of every lane reported its pinned placement; every measured run reproduced its lane's warmup in tokens and logprob bits",
+    "the comparison was refused because the driver status is UNKNOWN on a host without an NVIDIA driver (F-016)",
+    "llama.cpp agrees with the per-route reference on 18 of 32 prompts (token agreement 0.774) on this random model; reported, not gated (parity class self)",
+    "on this tiny CPU-only fixture llama.cpp decodes several times faster than the per-route lane and the gnostral kernel lane is below per-route (F-017, F-019); not a statement about Qwen3-30B-A3B"
+  ]
+}

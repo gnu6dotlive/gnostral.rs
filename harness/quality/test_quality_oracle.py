@@ -334,6 +334,14 @@ class SelfReproductionTests(unittest.TestCase):
         result = self._run(self._pair("c", tokens, binary=None), self._pair("d", tokens, binary=None))
         self.assertEqual(result["verdict"], oracle.VERDICT_BLOCKED)
 
+    def test_any_other_lane_identity_field_must_match(self) -> None:
+        tokens = {pid: [1, 2, 3] for pid in self.ids}
+        a, b = self._pair("a", tokens), self._pair("b", tokens)
+        doc = json.loads(Path(b[0]).read_text(encoding="utf-8"))
+        doc["lane"]["build_tree_sha256"] = "f" * 64
+        Path(b[0]).write_text(json.dumps(doc), encoding="utf-8")
+        self.assertEqual(self._run(a, b)["verdict"], oracle.VERDICT_BLOCKED)
+
     def test_cli_exit_codes(self) -> None:
         tokens = {pid: [1, 2, 3] for pid in self.ids}
         a, b = self._pair("a", tokens), self._pair("b", tokens, logprob=-0.5)

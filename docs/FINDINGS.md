@@ -183,6 +183,39 @@ Rules:
   and contention cost could exceed the compute. This is the second Phase 2 hypothesis; it gets an
   instrumented measurement before any change.
 
+### F-018 · 2026-10-24 · The synthetic fixture mistyped its byte tokens
+
+- **Class:** PROVEN (llama.cpp refused the old file and loads the new one).
+- **What:** `make_qwen3moe_gguf.py` typed the 256 GPT-2 byte-level tokens as `BYTE` (6), which GGUF
+  reserves for SentencePiece `<0xXX>` tokens. mistral.rs ignored it; llama.cpp tried to parse the
+  token text as `<0xXX>` and failed to load the vocabulary. They are now `NORMAL` (1).
+- **Consequence:** the generator's output changed: seed 20261023 now gives
+  `d1dc2d72...9abce50` instead of `581b7325...69b5c6a`. Earlier receipts stay valid for the file they
+  name; reproducing them needs the generator at their commit.
+
+### F-019 · 2026-10-24 · llama-server omits probabilities for tokens inside an incomplete UTF-8 character
+
+- **Class:** SUPPORTED (source: `tools/server/server-context.cpp` at b11857 calls `add_token`, which
+  records probabilities, only once the generated text is valid UTF-8) and OBSERVED (32 tokens, 27
+  probability entries on one fixture prompt).
+- **Consequence:** per-token logprobs from `/completion` are not one per token. The llama.cpp lane
+  records the server's entries as reported, tagged by token id, checks they are an ordered
+  subsequence of the full token list, and its self-reproducibility compares both bit for bit. It does
+  not pretend to have a logprob for every token. Real text with accents or non-Latin scripts will hit
+  this too.
+
+### F-020 · 2026-10-24 · On the tiny CPU fixture llama.cpp decodes about 3x faster than our per-route lane
+
+- **Class:** OBSERVED (one four-lane run, three measured repetitions each); cause UNKNOWN.
+- **What:** same random 2-layer model, everything on a 4-core CPU: llama.cpp 2488-3134 tok/s,
+  `per-route` 820-915, `grouped` 771-870, `gnostral` 438-459. Every lane reproduced itself and kept
+  its pinned placement; the comparison itself was refused (driver `UNKNOWN`, F-016).
+- **Why it matters:** with matrices this small, per-token fixed costs dominate. It is a hint, to be
+  measured with the Q-042 timers, that the gap to llama.cpp on the real model may include fixed
+  overhead per layer and per token, not only kernel throughput. It is not a statement about
+  Qwen3-30B-A3B.
+- **Evidence:** `evidence/runs/synthetic-moe-four-lane-cpu-20261024/summary.json`.
+
 ## Evidence not yet in the repository
 
 These directories exist on the lab disk only. Until they are committed they are not program

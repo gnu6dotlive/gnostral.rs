@@ -49,3 +49,4 @@ ranges: overlapping min/max is "inconclusive", never a ranking.
 - The driver probe is `harness/bench/driver_probe.py`: `NO_XID` only after reading the boot's kernel
   log with an NVIDIA driver loaded, `UNKNOWN` otherwise (F-016). On a CPU-only host the comparison is
   therefore refused, by design.
+- `--llama-server` adds a llama.cpp lane (parity class `self`), see [`harness/lanes/`](../lanes/README.md).

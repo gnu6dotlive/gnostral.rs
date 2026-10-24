@@ -44,6 +44,8 @@ jobs:
         run: cargo test --locked --manifest-path harness/bench/Cargo.toml
       - name: Driver-health probe (Q-031)
         run: python3 -m unittest discover -s harness/bench -p 'test_*.py'
+      - name: Benchmark lanes, llama.cpp lane against a fake server (Q-025/Q-031)
+        run: python3 -m unittest discover -s harness/lanes -p 'test_*.py'
       - name: Memory plan, paged KV and reserve policy (Q-027/Q-028/Q-038/Q-041)
         run: cargo test --locked --manifest-path crates/gnostral-memory-plan/Cargo.toml
       - name: Continuous-batching scheduler policy (Q-028/Q-039)

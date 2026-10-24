@@ -160,7 +160,9 @@ def build(args: argparse.Namespace) -> dict:
     w.string("tokenizer.ggml.model", "gpt2")
     w.string("tokenizer.ggml.pre", "qwen2")
     w.strings("tokenizer.ggml.tokens", tokens)
-    w.i32s("tokenizer.ggml.token_type", [6] * 256 + [3, 3])
+    # GPT-2 byte-level tokens are NORMAL (1); BYTE (6) means SentencePiece "<0xXX>" tokens, which
+    # llama.cpp parses and rejects here. CONTROL (3) for the two chat specials.
+    w.i32s("tokenizer.ggml.token_type", [1] * 256 + [3, 3])
     w.strings("tokenizer.ggml.merges", [])
     w.u32("tokenizer.ggml.eos_token_id", vocab - 1)
     w.u32("tokenizer.ggml.padding_token_id", vocab - 1)

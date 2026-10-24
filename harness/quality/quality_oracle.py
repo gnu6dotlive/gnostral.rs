@@ -728,7 +728,8 @@ def self_reproduction(
     raw_second = json.loads(Path(second_capture).read_text(encoding="utf-8"))["lane"]
     result: dict[str, Any] = {"lane": first.lane.engine, "prompts": len(first.captures)}
     reasons = []
-    if first.lane != second.lane:
+    identity = lambda raw: {k: v for k, v in raw.items() if k != "placement"}
+    if first.lane != second.lane or identity(raw_first) != identity(raw_second):
         reasons.append("the two captures are not the same lane identity")
     if first.lane.binary_sha256 is None or first.lane.model_sha256 is None:
         reasons.append("binary and model must both be pinned")

@@ -26,18 +26,20 @@ Usage:
 from __future__ import annotations
 
 import argparse
-import functools
 import hashlib
 import json
 import os
 import subprocess
 import sys
-import tempfile
-import time
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
-ORACLE = ROOT / "harness" / "quality" / "quality_oracle.py"
+sys.path.insert(0, str(ROOT / "harness" / "lanes"))
+import lanelib  # noqa: E402
+from lanelib import logprobs_path, manifest_hash, run_sampled, sha256_file  # noqa: E402
+
+ORACLE = lanelib.ORACLE
+LLAMA_LANE = ROOT / "harness" / "lanes" / "llama_server_lane.py"
 MAKER = Path(__file__).resolve().parent / "make_qwen3moe_gguf.py"
 DEFAULT_MANIFEST = ROOT / "harness" / "quality" / "prompts" / "quality-prompts-32-20261023.json"
 LANES = {
@@ -49,21 +51,6 @@ LANES = {
 
 # Reads this boot's kernel log for NVIDIA Xid faults; UNKNOWN when it cannot (F-016).
 DRIVER_PROBE = ROOT / "harness" / "bench" / "driver_probe.py"
-
-
-@functools.lru_cache(maxsize=None)
-def sha256_file(path: Path) -> str:
-    h = hashlib.sha256()
-    with path.open("rb") as handle:
-        for chunk in iter(lambda: handle.read(1 << 20), b""):
-            h.update(chunk)
-    return h.hexdigest()
-
-
-def manifest_hash(manifest: Path) -> str:
-    out = subprocess.run([sys.executable, "-I", str(ORACLE), "manifest-hash", str(manifest)],
-                         check=True, capture_output=True, text=True).stdout
-    return json.loads(out)["manifest_sha256"]
 
 
 def residency_env(cfg: dict, lane: str, extra: dict[str, str] | None = None) -> dict[str, str]:
@@ -102,10 +89,6 @@ def expected_placement(args: argparse.Namespace) -> str:
     return f"0-{g - 1}:cuda:0,{g}-{last}:cpu;nm=cuda:0"
 
 
-def logprobs_path(capture: Path) -> Path:
-    return capture.with_name(capture.stem + ".logprobs.json")
-
-
 def capture_cmd(args: argparse.Namespace, out: Path, lane: str, dest: Path) -> list[str]:
     model = model_path(args, out)
     cmd = [
@@ -129,71 +112,6 @@ def capture(args: argparse.Namespace, out: Path, cfg: dict, lane: str, dest: Pat
                           capture_output=True, text=True)
 
 
-def smi(*query: str) -> list[str] | None:
-    """Rows of an nvidia-smi CSV query, or None when nvidia-smi is absent or fails."""
-    try:
-        run = subprocess.run(["nvidia-smi", *query, "--format=csv,noheader,nounits"],
-                             capture_output=True, text=True, timeout=10)
-    except (FileNotFoundError, subprocess.TimeoutExpired):
-        return None
-    return run.stdout.strip().splitlines() if run.returncode == 0 else None
-
-
-def card_used_mib() -> float | None:
-    rows = smi("--query-gpu=memory.used")
-    try:
-        return float(rows[0]) if rows else None
-    except ValueError:
-        return None
-
-
-def process_used_mib(pid: int) -> tuple[bool | None, float | None]:
-    """(pid listed as a compute app, its VRAM); (None, None) when nvidia-smi cannot say."""
-    rows = smi("--query-compute-apps=pid,used_memory")
-    if rows is None:
-        return None, None
-    for row in rows:
-        fields = [f.strip() for f in row.split(",")]
-        if len(fields) == 2 and fields[0] == str(pid):
-            try:
-                return True, float(fields[1])
-            except ValueError:
-                return True, None
-    return False, None
-
-
-def run_sampled(cmd: list[str], env: dict[str, str]) -> dict:
-    """Run a capture while sampling the card every 200 ms; no number is invented."""
-    ambient = card_used_mib()
-    with tempfile.TemporaryFile("w+") as out_f, tempfile.TemporaryFile("w+") as err_f:
-        proc = subprocess.Popen(cmd, env=env, stdout=out_f, stderr=err_f, text=True)
-        peak_card: float | None = None
-        peak_proc: float | None = None
-        seen: bool | None = None
-        while True:
-            done = proc.poll() is not None
-            card = card_used_mib()
-            if card is not None:
-                peak_card = card if peak_card is None else max(peak_card, card)
-            listed, used = process_used_mib(proc.pid)
-            if listed is not None:
-                seen = bool(seen) or listed
-            if used is not None:
-                peak_proc = used if peak_proc is None else max(peak_proc, used)
-            if done:
-                break
-            time.sleep(0.2)
-        out_f.seek(0)
-        err_f.seek(0)
-        return {"returncode": proc.returncode, "stdout": out_f.read(), "stderr": err_f.read(),
-                "ambient_mib": ambient, "peak_card_mib": peak_card, "pid_seen": seen,
-                "peak_process_mib": peak_proc}
-
-
-def fmt(v: float | bool | None) -> str:
-    return "UNKNOWN" if v is None else str(round(v, 1) if isinstance(v, float) else v).lower()
-
-
 def lane_main(args: argparse.Namespace) -> int:
     """One lane run for gnostral-bench: capture, parity vs reference, then metrics."""
     out = Path(args.out)
@@ -202,21 +120,20 @@ def lane_main(args: argparse.Namespace) -> int:
         return 5
     cfg = {"cache_bytes": args.cache_bytes, "profile": args.profile}
     latest = out / f"capture-{args.config}-{args.lane}-latest.json"
-    run = run_sampled(capture_cmd(args, out, args.lane, latest), residency_env(cfg, args.lane))
+    run = run_sampled(capture_cmd(args, out, args.lane, latest), residency_env(cfg, args.lane),
+                      sample=args.device == "cuda")
     sys.stderr.write(run["stderr"][-4000:])
     if run["returncode"] != 0:
         return run["returncode"]
     if args.device == "cuda":
-        print(f"GNOSTRAL_DEVICE cuda pid_seen={fmt(run['pid_seen'])} "
-              f"peak_process_mib={fmt(run['peak_process_mib'])} "
-              f"peak_card_mib={fmt(run['peak_card_mib'])} ambient_mib={fmt(run['ambient_mib'])}")
+        print(lanelib.device_line(run))
         if run["pid_seen"] is False:
             sys.stderr.write("CUDA not proven: the capture pid never appeared as an nvidia-smi compute app\n")
             return 3
     for line in run["stdout"].splitlines():
         if line.startswith("GNOSTRAL_PLACEMENT "):
             print(line)
-    print(self_repro_line(args, out, latest))
+    print(lanelib.self_repro_line(args.manifest, self_ref(out, args.config, args.lane), latest))
     parity = subprocess.run(
         [sys.executable, "-I", str(ORACLE), "parity", "--manifest", str(args.manifest),
          "--reference", str(out / f"capture-{args.config}-reference.json"),
@@ -236,30 +153,6 @@ def lane_main(args: argparse.Namespace) -> int:
 
 def self_ref(out: Path, config: str, lane: str) -> Path:
     return out / f"self-ref-{config}-{lane}.json"
-
-
-def self_repro_line(args: argparse.Namespace, out: Path, latest: Path) -> str:
-    """The first capture of a lane in a configuration (the warmup) is its reference."""
-    ref = self_ref(out, args.config, args.lane)
-    if not ref.exists():
-        ref.write_bytes(latest.read_bytes())
-        logprobs_path(ref).write_bytes(logprobs_path(latest).read_bytes())
-        return "GNOSTRAL_SELF_REPRO REFERENCE"
-    done = subprocess.run(
-        [sys.executable, "-I", str(ORACLE), "self-repro", "--manifest", str(args.manifest),
-         "--first", str(ref), "--second", str(latest),
-         "--first-logprobs", str(logprobs_path(ref)), "--second-logprobs", str(logprobs_path(latest))],
-        capture_output=True, text=True)
-    if done.returncode == 0:
-        return "GNOSTRAL_SELF_REPRO PASS"
-    try:
-        result = json.loads(done.stdout)
-        diff = result.get("first_difference") or {}
-        detail = (f"{result['verdict']} prompt={diff.get('prompt_id')} kind={diff.get('kind')} "
-                  f"index={diff.get('index')} {';'.join(result.get('reasons', []))}").strip()
-    except (json.JSONDecodeError, KeyError):
-        detail = "oracle error: " + (done.stderr.strip().splitlines() or ["no output"])[-1]
-    return f"GNOSTRAL_SELF_REPRO FAIL {detail}"
 
 
 def expert_bytes(geometry: dict) -> int:
@@ -309,8 +202,30 @@ def summarise(out: Path, config: str, cfg: dict, bench: subprocess.CompletedProc
             "bench_exit": bench.returncode, "baseline": order[0] if order else None, "lanes": lanes}
 
 
+def llama_lanes(args: argparse.Namespace, out: Path, config: str, model: Path, model_sha: str) -> list[dict]:
+    """The optional llama.cpp lane (Q-025 three-way): another engine, gated on reproducing itself."""
+    if not args.llama_server:
+        return []
+    server = Path(args.llama_server).resolve()
+    return [{
+        "engine": "llama.cpp",
+        "binary_path": str(server),
+        "expected_binary_sha256": sha256_file(server),
+        "model_path": str(model),
+        "expected_model_sha256": model_sha,
+        "host_fingerprint": f"{args.device}:{os.uname().machine}:{os.cpu_count()}",
+        "argv": [sys.executable, "-I", str(LLAMA_LANE), "--server-bin", str(server), "--model", str(model),
+                 "--manifest", str(args.manifest), "--out", str(out), "--max-tokens", str(args.max_tokens),
+                 f"--server-args={args.llama_args}", "--engine", "llama.cpp", "--config", config,
+                 "--device", args.device, "--reference", str(out / f"capture-{config}-reference.json"),
+                 "--stop-file", str(out / "PARITY_FAIL")],
+        "expected_placement": args.llama_placement,
+        "parity_class": "self",
+    }]
+
+
 def run_config(args: argparse.Namespace, out: Path, config: str, cfg: dict, model: Path, model_sha: str) -> dict:
-    for lane in LANES:
+    for lane in [*LANES, *(["llama.cpp"] if args.llama_server else [])]:
         for stale in (self_ref(out, config, lane), logprobs_path(self_ref(out, config, lane))):
             stale.unlink(missing_ok=True)
     reference = capture(args, out, cfg, "per-route", out / f"capture-{config}-reference.json")
@@ -356,7 +271,7 @@ def run_config(args: argparse.Namespace, out: Path, config: str, cfg: dict, mode
                 "parity_class": "exact",
             }
             for lane in LANES
-        ],
+        ] + llama_lanes(args, out, config, model, model_sha),
     }
     plan_path = out / f"plan-{config}.json"
     plan_path.write_text(json.dumps(plan, indent=2))
@@ -388,6 +303,12 @@ def main() -> int:
     parser.add_argument("--moe-inter", type=int, default=256)
     parser.add_argument("--gpu-layers", type=int,
                         help="layers mapped to CUDA (default: all); the automatic device map is never used")
+    parser.add_argument("--llama-server", help="llama-server executable: adds a llama.cpp lane (parity class self)")
+    parser.add_argument("--llama-args", default="",
+                        help='llama-server arguments in one string, with the = form: '
+                             '--llama-args="-ngl 99 --cpu-moe -t 8 -c 4096 --fit off"')
+    parser.add_argument("--llama-placement",
+                        help='placement the llama.cpp lane must report, e.g. "llama.cpp offloaded=49/49 cpu_moe=on"')
     parser.add_argument("--mixed-fraction", type=float, default=0.5,
                         help="share of expert bytes given to the card in the mixed configuration")
     parser.add_argument("--lane", choices=sorted(LANES), help=argparse.SUPPRESS)
@@ -397,6 +318,8 @@ def main() -> int:
     args = parser.parse_args()
     if args.lane:
         return lane_main(args)
+    if args.llama_server and not (args.llama_args and args.llama_placement):
+        parser.error("--llama-server needs --llama-args and --llama-placement (the placement is pinned, not guessed)")
 
     out = Path(args.out).resolve()
     out.mkdir(parents=True, exist_ok=True)
