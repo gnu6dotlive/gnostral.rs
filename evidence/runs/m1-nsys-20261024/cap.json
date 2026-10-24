@@ -1,0 +1,55 @@
+{
+  "schema": "gnostral.quality.capture/1",
+  "promptset_sha256": "x",
+  "lane": {
+    "engine": "gnostral",
+    "binary_sha256": null,
+    "model_sha256": null,
+    "placement": "0-47:cuda:0;nm=cuda:0"
+  },
+  "sampling": {
+    "temperature": 0,
+    "seed": 0,
+    "max_tokens": 32
+  },
+  "captures": [
+    {
+      "prompt_id": "q19-summary-tech",
+      "prompt_sha256": "c99fd22deef427418925217dc93c210440175c80dc34b6d6d314555ec4271b7f",
+      "token_ids": [
+        151667,
+        198,
+        32313,
+        11,
+        279,
+        1196,
+        374,
+        10161,
+        311,
+        62079,
+        3170,
+        20980,
+        8668,
+        18376,
+        15546,
+        4119,
+        20276,
+        1172,
+        264,
+        2421,
+        11647,
+        817,
+        3950,
+        11,
+        304,
+        220,
+        21,
+        15,
+        4244,
+        13,
+        6771,
+        752
+      ]
+    }
+  ]
+}

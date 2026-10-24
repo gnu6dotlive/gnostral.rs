@@ -412,6 +412,46 @@ Rules:
 - **Protocol note:** sampling with logprobs (the captures need them) costs 2.1 ms per step.
 - **Evidence:** `evidence/runs/m1-profile-20261024/`.
 
+### F-034 · 2026-10-24 · A 2 GiB expert cache lifts gnostral to 28.9 tok/s, at 1.8 GB more VRAM than llama.cpp
+
+- **Class:** OBSERVED on the lab host, comparison accepted (`COMPARED`).
+- **What:** same protocol as F-032, mixed configuration: 2 GiB of expert cache (about 20% of the
+  experts) filled from a profile recorded on 6 other prompts at 64 tokens (out of sample: no prompt in
+  common with the 32 measured). Decode tok/s, median (min-max): `per-route` 16.3 (13.4-16.7),
+  `grouped` 18.7 (17.6-18.9, above), `gnostral` 28.9 (28.6-30.3, above), llama.cpp `--cpu-moe` 44.7
+  (42.7-47.0, every expert on the CPU). Whole-card VRAM medians: our lanes 5756-5943 MiB, llama.cpp
+  3943 MiB.
+- **Reading:** against the all-CPU run of F-032, gnostral goes from 23.6 to 28.9 (+22%) and its ranges
+  do not overlap, but the two runs were taken at different times on a host that varies 10-20% between
+  runs; llama.cpp read 40.7 there and 44.7 here with the same arguments. On this protocol our best lane
+  is at 65% of llama.cpp while using 46% more card memory.
+- **Evidence:** `evidence/runs/m1-qwen3-30b-mixed-20261024/bench-mixed-experts/pareto.md` and receipts,
+  `profile-recorded.json`.
+
+### F-035 · 2026-10-24 · The decode is launch-bound on the host; 18 of every 42 launches per layer are KV copies
+
+- **Class:** the A/B is OBSERVED (bit identity verified from the committed captures); the kernel counts
+  come from an nsys report kept on the lab disk, so they are UNKNOWN as evidence until its `nsys stats`
+  export is committed; the attribution of the copies is OBSERVED in the source.
+- **What (lab report):** per decode step, 2040 kernel launches (42 per layer), 1225 asynchronous
+  allocations, 145 device-to-host copies, 867 `copy2d_bf16` (18 per layer); the card busy about 23% of
+  the time under nsys; attention runs the naive path.
+- **A/B:** forcing off `maybe_synchronize` (a full device sync before each naive attention when less
+  than 4 GB is free, which is always the case on the 3070) changed nothing measurable (lab: 23.9-24.9
+  against 24.8-25.9 tok/s, overlapping; those numbers have no committed receipt) and the 6 captures
+  have byte-identical logprob files. The per-layer device-to-host copies already synchronise.
+- **Attribution (source):** the lab build has no `flash-attn` feature, so CUDA attention takes
+  `run_attention_noflash`, which calls `repeat_kv(k, 8)` and `repeat_kv(v, 8)` (Qwen3-30B-A3B: 32 query
+  heads, 4 KV heads). `repeat_kv` is `Tensor::cat` of 8 copies: 16 `copy2d` per layer, plus 2 for the KV
+  append, 18, the measured count. The copies also grow with the context: at 4096 tokens they would move
+  about 64 MB per layer per token. With `flash-attn`, groups up to 8 are handled natively
+  (`FLASH_ATTN_NATIVE_MAX_GQA_GROUP = 8`), so no copy.
+- **Next:** a build with `flash-attn` is the cheapest test of the attention share of the 15.9 ms
+  host-side time (F-033); a code change that computes grouped attention without materialising the
+  repeat would serve GPUs flash-attn does not support.
+- **Evidence:** `evidence/runs/m1-sdpa-sync-ab-20261024/`, `evidence/runs/m1-nsys-20261024/` (capture
+  only), `vendor/mistralrs-strata/mistralrs-core/src/attention/mod.rs`.
+
 ## Evidence not yet in the repository
 
 These directories exist on the lab disk only. Until they are committed they are not program
