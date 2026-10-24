@@ -1,7 +1,9 @@
 //! Cross-lane comparison: refuse incomparable lanes, then render the Pareto
-//! table. A ratio is only ever printed between two known numbers.
+//! table. A ratio is only ever printed between two known numbers, and next to
+//! it the full sample range and whether it separates from the baseline's: a
+//! median ratio between overlapping ranges is not a ranking.
 
-use crate::receipt::{DriverStatus, Parity, Receipt};
+use crate::receipt::{DriverStatus, Parity, ParityClass, Receipt};
 use crate::stats::{statistics, Stats};
 
 /// Compare two or more already-validated receipts. Returns the Markdown report
@@ -18,10 +20,21 @@ pub fn compare(lanes: &[(String, Receipt)]) -> Result<String, Vec<String>> {
     }
 
     for (label, lane) in lanes {
-        if lane.semantic_parity != Parity::Pass {
+        if lane.lane.parity_class == ParityClass::Exact && lane.semantic_parity != Parity::Pass {
             refusals.push(format!(
                 "{label}: semantic parity is {}, and a lane that did not pass the frozen probe cannot be ranked",
                 lane.semantic_parity.as_str()
+            ));
+        }
+        if lane.self_reproducibility != Parity::Pass {
+            refusals.push(format!(
+                "{label}: self-reproducibility is {}, and a lane that does not reproduce itself cannot be ranked",
+                lane.self_reproducibility.as_str()
+            ));
+        }
+        if lane.lane.placement.is_none() {
+            refusals.push(format!(
+                "{label}: layer placement is UNKNOWN, and placement is part of a lane's identity"
             ));
         }
         if lane.lane.driver_status != DriverStatus::NoXid {
@@ -144,6 +157,9 @@ fn frozen<T: PartialEq + std::fmt::Debug>(
 
 struct Row {
     engine: String,
+    class: &'static str,
+    placement: String,
+    separation: &'static str,
     stats: Stats,
     sample_count: usize,
     vram_median: Option<f64>,
@@ -173,12 +189,14 @@ fn dominates(a: &Row, b: &Row) -> bool {
 
 fn render(lanes: &[(String, Receipt)]) -> String {
     let base = &lanes[0].1;
-    let baseline_median = base.recomputed().map(|stats| stats.median).unwrap_or(0.0);
+    let base_stats = base.recomputed().expect("validated receipts have samples");
+    let baseline_median = base_stats.median;
     let baseline_vram = vram_median(base);
 
     let mut rows: Vec<Row> = lanes
         .iter()
-        .map(|(_, lane)| {
+        .enumerate()
+        .map(|(index, (_, lane))| {
             let stats = lane.recomputed().expect("validated receipts have samples");
             let vram_median = vram_median(lane);
             let speed_ratio = stats.median / baseline_median;
@@ -188,6 +206,17 @@ fn render(lanes: &[(String, Receipt)]) -> String {
             };
             Row {
                 engine: lane.lane.engine.clone(),
+                class: lane.lane.parity_class.as_str(),
+                placement: lane
+                    .lane
+                    .placement
+                    .clone()
+                    .unwrap_or_else(|| "UNKNOWN".into()),
+                separation: if index == 0 {
+                    "baseline"
+                } else {
+                    separation(&stats, &base_stats)
+                },
                 stats,
                 sample_count: lane.samples.len(),
                 vram_median,
@@ -224,8 +253,10 @@ fn render(lanes: &[(String, Receipt)]) -> String {
         ));
     }
     out.push('\n');
-    out.push_str("| Lane | Decode tok/s (median) | n | Whole-card VRAM MiB (median) | Ambient VRAM MiB | Speed vs baseline | VRAM vs baseline | Pareto |\n");
-    out.push_str("| --- | ---: | ---: | ---: | ---: | ---: | ---: | :---: |\n");
+    out.push_str("| Lane | Class | Placement | Decode tok/s (median) | Decode min-max | n | vs baseline range | Whole-card VRAM MiB (median) | Ambient VRAM MiB | Speed vs baseline | VRAM vs baseline | Pareto |\n");
+    out.push_str(
+        "| --- | --- | --- | ---: | ---: | ---: | :---: | ---: | ---: | ---: | ---: | :---: |\n",
+    );
     for row in &rows {
         let vram = row
             .vram_median
@@ -240,10 +271,15 @@ fn render(lanes: &[(String, Receipt)]) -> String {
             .map(|value| format!("{value:.3}x"))
             .unwrap_or_else(|| "UNKNOWN".to_string());
         out.push_str(&format!(
-            "| {} | {} | {} | {} | {} | {:.3}x | {} | {} |\n",
+            "| {} | {} | {} | {} | {}-{} | {} | {} | {} | {} | {:.3}x | {} | {} |\n",
             cell(&row.engine),
+            row.class,
+            cell(&row.placement),
             format_3(row.stats.median),
+            format_3(row.stats.min),
+            format_3(row.stats.max),
             row.sample_count,
+            row.separation,
             vram,
             ambient,
             row.speed_ratio,
@@ -251,7 +287,24 @@ fn render(lanes: &[(String, Receipt)]) -> String {
             row.pareto,
         ));
     }
+    if rows
+        .iter()
+        .any(|row| row.class == ParityClass::SelfOnly.as_str())
+    {
+        out.push_str("\nSelf-class lanes run a different engine: they are gated on reproducing their own output, not on token identity with the baseline. Their agreement with the reference is in their run output, not ranked here.\n");
+    }
     out
+}
+
+/// Whether `lane`'s sample range lies entirely above or below the baseline's.
+fn separation(lane: &Stats, base: &Stats) -> &'static str {
+    if lane.min > base.max {
+        "ABOVE"
+    } else if lane.max < base.min {
+        "BELOW"
+    } else {
+        "OVERLAP"
+    }
 }
 
 fn format_3(value: f64) -> String {
@@ -271,6 +324,9 @@ mod tests {
     fn row(median: f64, vram: Option<f64>) -> Row {
         Row {
             engine: "lane".into(),
+            class: "exact",
+            placement: "0-0:cpu;nm=cpu".into(),
+            separation: "OVERLAP",
             stats: Stats {
                 median,
                 min: median,

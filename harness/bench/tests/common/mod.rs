@@ -11,6 +11,7 @@ pub const MODEL: &str = "ccccccccccccccccccccccccccccccccccccccccccccccccccccccc
 pub const MODEL_ALT: &str = "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee";
 pub const PROMPT: &str = "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd";
 pub const PROTOCOL: &str = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+pub const PLACEMENT: &str = "0-47:cuda:0;nm=cuda:0";
 
 pub struct SampleFixture {
     pub decode: f64,
@@ -51,6 +52,10 @@ pub struct Fixture {
     pub model_sha256: String,
     pub host_fingerprint: String,
     pub driver_status: String,
+    /// `None` renders `null` (UNKNOWN); the test decides whether unknowns names it.
+    pub placement: Option<String>,
+    pub parity_class: String,
+    pub self_repro: String,
     pub warmup_runs: u64,
     pub samples: Vec<SampleFixture>,
     pub ambient: String,
@@ -65,7 +70,7 @@ pub struct Fixture {
 impl Fixture {
     pub fn new(engine: &str, binary_sha256: &str, model_sha256: &str) -> Self {
         Self {
-            schema: "gnostral.rs/engine-benchmark-receipt/v1".into(),
+            schema: "gnostral.rs/engine-benchmark-receipt/v2".into(),
             run_id: format!("synthetic-{engine}"),
             date: "2026-10-23".into(),
             protocol_id: "Q-025-ENGINE-DIRECTION-01".into(),
@@ -85,6 +90,9 @@ impl Fixture {
             model_sha256: model_sha256.into(),
             host_fingerprint: "rtx3070-8gib/32gib-ram/8-threads/graphical".into(),
             driver_status: "NO_XID".into(),
+            placement: Some(PLACEMENT.into()),
+            parity_class: "exact".into(),
+            self_repro: "PASS".into(),
             warmup_runs: 1,
             samples: vec![
                 SampleFixture::new(34.0),
@@ -207,20 +215,25 @@ impl Fixture {
                 self.repeat_penalty
             ),
             format!(
-                "\"lane\": {{ \"engine\": \"{}\", \"binary_path\": \"{}\", \"binary_sha256\": \"{}\", \"model_path\": \"{}\", \"model_sha256\": \"{}\", \"host_fingerprint\": \"{}\", \"driver_status\": \"{}\" }}",
+                "\"lane\": {{ \"engine\": \"{}\", \"binary_path\": \"{}\", \"binary_sha256\": \"{}\", \"model_path\": \"{}\", \"model_sha256\": \"{}\", \"host_fingerprint\": \"{}\", \"driver_status\": \"{}\", \"placement\": {}, \"parity_class\": \"{}\" }}",
                 self.engine,
                 self.binary_path,
                 self.binary_sha256,
                 self.model_path,
                 self.model_sha256,
                 self.host_fingerprint,
-                self.driver_status
+                self.driver_status,
+                self.placement
+                    .as_ref()
+                    .map_or("null".to_string(), |p| format!("\"{p}\"")),
+                self.parity_class
             ),
             format!("\"warmup_runs\": {}", self.warmup_runs),
             format!("\"samples\": [\n    {samples}\n  ]"),
             format!("\"ambient_vram_mib\": {}", self.ambient),
             format!("\"reclaim_delta_mib\": {}", self.reclaim),
             format!("\"semantic_parity\": \"{}\"", self.parity),
+            format!("\"self_reproducibility\": \"{}\"", self.self_repro),
             format!(
                 "\"derived\": {{ \"sample_count\": {}, \"median_decode_tok_s\": {median_token}, \"min_decode_tok_s\": {min}, \"max_decode_tok_s\": {max}, \"p95_decode_tok_s\": {p95} }}",
                 self.sample_count_override

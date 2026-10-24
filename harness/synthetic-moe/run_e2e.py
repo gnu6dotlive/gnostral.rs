@@ -9,6 +9,12 @@ Wires the real pieces together, nothing mocked:
    with identity pins, 1 warmup and interleaved repetitions. Each lane captures tokens,
    checks greedy parity against the reference with `quality_oracle.py` (quality before
    timing) and prints `GNOSTRAL_PARITY` plus the engine's `GNOSTRAL_METRICS`.
+4. Plan v2 identity checks (docs/FINDINGS.md, F-010 to F-014): every capture runs with
+   the prefix cache off and, on CUDA, an explicit `--gpu-layers` map; the lane forwards
+   the engine's `GNOSTRAL_PLACEMENT`, which the bench compares with the pinned
+   `expected_placement`. The warmup capture becomes the lane's own reference
+   (`GNOSTRAL_SELF_REPRO REFERENCE`); every measured capture must match it in tokens
+   and logprob bits (`GNOSTRAL_SELF_REPRO PASS|FAIL`).
 
 All outputs land in `--out`. Numbers from this fixture are not engine performance: the
 model is random, tiny and CPU-only. The run proves plumbing, parity and receipts.
@@ -41,9 +47,8 @@ LANES = {
 }
 
 
-# Kernel-log scan for NVIDIA Xid faults since boot; the bench refuses a GPU comparison otherwise.
-DRIVER_PROBE = ("if journalctl -k -b --no-pager 2>/dev/null | grep -q 'NVRM: Xid'; "
-                "then echo GNOSTRAL_DRIVER XID; else echo GNOSTRAL_DRIVER NO_XID; fi")
+# Reads this boot's kernel log for NVIDIA Xid faults; UNKNOWN when it cannot (F-016).
+DRIVER_PROBE = ROOT / "harness" / "bench" / "driver_probe.py"
 
 
 @functools.lru_cache(maxsize=None)
@@ -77,6 +82,30 @@ def model_path(args: argparse.Namespace, out: Path) -> Path:
     return Path(args.model).resolve() if args.model else out / "synth.gguf"
 
 
+def gpu_layers(args: argparse.Namespace) -> int | None:
+    """Layers mapped to CUDA: explicit, all layers by default; never the automatic map (F-011)."""
+    if args.device != "cuda":
+        return None
+    return args.gpu_layers if args.gpu_layers is not None else args.layers
+
+
+def expected_placement(args: argparse.Namespace) -> str:
+    """The canonical placement the engine must report for this run (engine patch 0008)."""
+    last = args.layers - 1
+    if args.device == "cpu":
+        return f"0-{last}:cpu;nm=cpu"
+    g = gpu_layers(args)
+    if g >= args.layers:
+        return f"0-{last}:cuda:0;nm=cuda:0"
+    if g <= 0:
+        return f"0-{last}:cpu;nm=cuda:0"
+    return f"0-{g - 1}:cuda:0,{g}-{last}:cpu;nm=cuda:0"
+
+
+def logprobs_path(capture: Path) -> Path:
+    return capture.with_name(capture.stem + ".logprobs.json")
+
+
 def capture_cmd(args: argparse.Namespace, out: Path, lane: str, dest: Path) -> list[str]:
     model = model_path(args, out)
     cmd = [
@@ -84,10 +113,13 @@ def capture_cmd(args: argparse.Namespace, out: Path, lane: str, dest: Path) -> l
         "--manifest", str(args.manifest), "--promptset-sha256", manifest_hash(args.manifest),
         "--engine", lane, "--binary-sha256", sha256_file(Path(args.capture_bin)),
         "--model-sha256", sha256_file(model), "--max-tokens", str(args.max_tokens),
-        "--out", str(dest),
+        "--out", str(dest), "--no-prefix-cache", "--topn", "2",
+        "--logprobs-out", str(logprobs_path(dest)),
     ]
     if args.device == "cpu":
         cmd.append("--cpu")
+    else:
+        cmd += ["--gpu-layers", str(gpu_layers(args))]
     return cmd
 
 
@@ -181,6 +213,10 @@ def lane_main(args: argparse.Namespace) -> int:
         if run["pid_seen"] is False:
             sys.stderr.write("CUDA not proven: the capture pid never appeared as an nvidia-smi compute app\n")
             return 3
+    for line in run["stdout"].splitlines():
+        if line.startswith("GNOSTRAL_PLACEMENT "):
+            print(line)
+    print(self_repro_line(args, out, latest))
     parity = subprocess.run(
         [sys.executable, "-I", str(ORACLE), "parity", "--manifest", str(args.manifest),
          "--reference", str(out / f"capture-{args.config}-reference.json"),
@@ -198,6 +234,34 @@ def lane_main(args: argparse.Namespace) -> int:
     return 0
 
 
+def self_ref(out: Path, config: str, lane: str) -> Path:
+    return out / f"self-ref-{config}-{lane}.json"
+
+
+def self_repro_line(args: argparse.Namespace, out: Path, latest: Path) -> str:
+    """The first capture of a lane in a configuration (the warmup) is its reference."""
+    ref = self_ref(out, args.config, args.lane)
+    if not ref.exists():
+        ref.write_bytes(latest.read_bytes())
+        logprobs_path(ref).write_bytes(logprobs_path(latest).read_bytes())
+        return "GNOSTRAL_SELF_REPRO REFERENCE"
+    done = subprocess.run(
+        [sys.executable, "-I", str(ORACLE), "self-repro", "--manifest", str(args.manifest),
+         "--first", str(ref), "--second", str(latest),
+         "--first-logprobs", str(logprobs_path(ref)), "--second-logprobs", str(logprobs_path(latest))],
+        capture_output=True, text=True)
+    if done.returncode == 0:
+        return "GNOSTRAL_SELF_REPRO PASS"
+    try:
+        result = json.loads(done.stdout)
+        diff = result.get("first_difference") or {}
+        detail = (f"{result['verdict']} prompt={diff.get('prompt_id')} kind={diff.get('kind')} "
+                  f"index={diff.get('index')} {';'.join(result.get('reasons', []))}").strip()
+    except (json.JSONDecodeError, KeyError):
+        detail = "oracle error: " + (done.stderr.strip().splitlines() or ["no output"])[-1]
+    return f"GNOSTRAL_SELF_REPRO FAIL {detail}"
+
+
 def expert_bytes(geometry: dict) -> int:
     """Bytes of every expert stack: Q2_K gate/up (84 B per 256) and Q3_K down (110 B per 256)."""
     per_expert = geometry["moe_inter"] * geometry["hidden"] * (2 * 84 + 110) // 256
@@ -212,8 +276,11 @@ def summarise(out: Path, config: str, cfg: dict, bench: subprocess.CompletedProc
         for run in json.loads(bundle_path.read_text()).get("runs", []):
             if run["phase"] != "measured":
                 continue
-            lane = lanes.setdefault(run["lane"], {"decode_tok_s": [], "parity": [], "device": [], "vram_mib": []})
+            lane = lanes.setdefault(run["lane"], {"decode_tok_s": [], "parity": [], "device": [], "vram_mib": [],
+                                                  "placement": [], "self_reproducibility": []})
             lane["parity"].append(run["parity"])
+            lane["placement"].append(run.get("placement"))
+            lane["self_reproducibility"].append(run.get("self_reproducibility"))
             for line in run["stdout"].splitlines():
                 if line.startswith("GNOSTRAL_METRICS "):
                     m = json.loads(line[len("GNOSTRAL_METRICS "):])
@@ -243,25 +310,31 @@ def summarise(out: Path, config: str, cfg: dict, bench: subprocess.CompletedProc
 
 
 def run_config(args: argparse.Namespace, out: Path, config: str, cfg: dict, model: Path, model_sha: str) -> dict:
+    for lane in LANES:
+        for stale in (self_ref(out, config, lane), logprobs_path(self_ref(out, config, lane))):
+            stale.unlink(missing_ok=True)
     reference = capture(args, out, cfg, "per-route", out / f"capture-{config}-reference.json")
     if reference.returncode != 0:
         sys.stderr.write(reference.stderr[-4000:])
         raise SystemExit(reference.returncode)
     lane_args = ["--capture-bin", args.capture_bin, "--bench-bin", args.bench_bin, "--out", str(out),
                  "--manifest", str(args.manifest), "--max-tokens", str(args.max_tokens),
-                 "--device", args.device, "--config", config,
+                 "--device", args.device, "--config", config, "--layers", str(args.layers),
                  "--cache-bytes", str(cfg["cache_bytes"]), "--profile", str(cfg["profile"])]
+    if args.gpu_layers is not None:
+        lane_args += ["--gpu-layers", str(args.gpu_layers)]
     if args.model:
         lane_args += ["--model", args.model]
     plan = {
-        "schema": "gnostral.rs/engine-benchmark-plan/v1",
+        "schema": "gnostral.rs/engine-benchmark-plan/v2",
         "run_id": f"synthetic-moe-e2e-{config}",
         "date": "2026-10-23",
         "protocol": {
             "id": f"synthetic-moe-{args.device}-{config}",
             "sha256": hashlib.sha256(json.dumps({"manifest": manifest_hash(args.manifest),
                                                  "max_tokens": args.max_tokens, "config": config,
-                                                 "cache_bytes": cfg["cache_bytes"]}).encode()).hexdigest(),
+                                                 "cache_bytes": cfg["cache_bytes"], "prefix_cache": "off",
+                                                 "placement": expected_placement(args)}).encode()).hexdigest(),
             "repetitions": args.repetitions,
             "context_tokens": 4096,
             "prompt_sha256": manifest_hash(args.manifest),
@@ -269,7 +342,7 @@ def run_config(args: argparse.Namespace, out: Path, config: str, cfg: dict, mode
             "sampling": {"temperature": 0, "seed": 0, "n_predict": args.max_tokens, "repeat_penalty": 1},
         },
         "warmup_runs": 1,
-        "driver_probe": ["/bin/sh", "-c", DRIVER_PROBE],
+        "driver_probe": [sys.executable, "-I", str(DRIVER_PROBE)],
         "lanes": [
             {
                 "engine": lane,
@@ -279,6 +352,8 @@ def run_config(args: argparse.Namespace, out: Path, config: str, cfg: dict, mode
                 "expected_model_sha256": model_sha,
                 "host_fingerprint": f"{args.device}:{os.uname().machine}:{os.cpu_count()}",
                 "argv": [sys.executable, "-I", str(Path(__file__).resolve()), "--lane", lane, *lane_args],
+                "expected_placement": expected_placement(args),
+                "parity_class": "exact",
             }
             for lane in LANES
         ],
@@ -311,6 +386,8 @@ def main() -> int:
     parser.add_argument("--layers", type=int, default=2)
     parser.add_argument("--experts", type=int, default=16)
     parser.add_argument("--moe-inter", type=int, default=256)
+    parser.add_argument("--gpu-layers", type=int,
+                        help="layers mapped to CUDA (default: all); the automatic device map is never used")
     parser.add_argument("--mixed-fraction", type=float, default=0.5,
                         help="share of expert bytes given to the card in the mixed configuration")
     parser.add_argument("--lane", choices=sorted(LANES), help=argparse.SUPPRESS)

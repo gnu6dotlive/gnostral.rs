@@ -157,6 +157,32 @@ Rules:
 - **Consequence:** any change of summation order can flip a greedy token. Token parity between
   lanes requires identical placement and numerics, not "close" ones.
 
+### F-016 · 2026-10-24 · The driver probe reported `NO_XID` without reading anything
+
+- **Class:** PROVEN (reproduced on a host without an NVIDIA driver and with an empty journal).
+- **What:** the plan's probe (`journalctl -k -b | grep -q 'NVRM: Xid'`, else `NO_XID`) printed
+  `NO_XID` when the kernel log was empty or unreadable, and the bench then accepted a comparison on a
+  machine with no GPU at all. Absence of evidence was reported as a clean driver.
+- **Fix:** `harness/bench/driver_probe.py` prints `NO_XID` only after reading this boot's kernel log
+  (journal, else `dmesg`) with an NVIDIA driver loaded, `UNKNOWN` otherwise, plus a detail line saying
+  what the verdict rests on. Six tests, including the empty-journal case.
+- **Consequence for earlier evidence:** the `NO_XID` of F-006 and F-007 came from the old probe. The
+  operator also checked the kernel log by hand and reported no Xid, so those runs are not known to be
+  dirty, but their driver verdict is SUPPORTED by that manual check, not by the probe.
+
+### F-017 · 2026-10-24 · The gnostral kernel lane is slower than candle on a tiny CPU-only model
+
+- **Class:** OBSERVED (two runs); cause UNKNOWN.
+- **What:** synthetic 2-layer fixture, every layer on the CPU, 4-core Xeon with AVX-512 in a cloud
+  container: `gnostral` 451-477 tok/s against `per-route` 820-903 and `grouped` 865-922 (ranges
+  disjoint, separation `BELOW`). On the lab's 8-layer CUDA fixture the same lane sat above `per-route`
+  (F-007).
+- **Hypothesis to test, not a conclusion:** fixed per-dispatch cost. The pool wakes its threads with a
+  condition variable on every projection (two dispatches per MoE layer per token), and on this host
+  those threads share four cores with candle's own rayon pool. With matrices this small the wake-up
+  and contention cost could exceed the compute. This is the second Phase 2 hypothesis; it gets an
+  instrumented measurement before any change.
+
 ## Evidence not yet in the repository
 
 These directories exist on the lab disk only. Until they are committed they are not program

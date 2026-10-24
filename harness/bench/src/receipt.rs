@@ -11,7 +11,8 @@ use std::fmt;
 use crate::json::Json;
 use crate::stats::{statistics, Stats};
 
-pub const SCHEMA_ID: &str = "gnostral.rs/engine-benchmark-receipt/v1";
+/// v2 adds the lane's layer placement, its parity class and self-reproducibility.
+pub const SCHEMA_ID: &str = "gnostral.rs/engine-benchmark-receipt/v2";
 /// The frozen Q-025 protocol measures three repetitions per lane.
 pub const MIN_REPETITIONS: u64 = 3;
 
@@ -26,6 +27,7 @@ const ROOT_FIELDS: &[&str] = &[
     "ambient_vram_mib",
     "reclaim_delta_mib",
     "semantic_parity",
+    "self_reproducibility",
     "derived",
     "unknowns",
 ];
@@ -47,6 +49,8 @@ const LANE_FIELDS: &[&str] = &[
     "model_sha256",
     "host_fingerprint",
     "driver_status",
+    "placement",
+    "parity_class",
 ];
 const SAMPLE_FIELDS: &[&str] = &[
     "decode_tok_s",
@@ -76,7 +80,10 @@ pub struct Receipt {
     pub samples: Vec<Sample>,
     pub ambient_vram_mib: Option<f64>,
     pub reclaim_delta_mib: Option<f64>,
+    /// Against the reference lane; `NOT_APPLICABLE` for a [`ParityClass::SelfOnly`] lane.
     pub semantic_parity: Parity,
+    /// Every measured run reproduced the lane's own warmup output, tokens and logprob bits.
+    pub self_reproducibility: Parity,
     pub derived: Derived,
     pub unknowns: BTreeMap<String, String>,
 }
@@ -109,6 +116,9 @@ pub struct LaneIdentity {
     pub model_sha256: String,
     pub host_fingerprint: String,
     pub driver_status: DriverStatus,
+    /// Canonical layer placement the engine reported, e.g. `0-47:cuda:0;nm=cuda:0`.
+    pub placement: Option<String>,
+    pub parity_class: ParityClass,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -136,6 +146,8 @@ pub enum Parity {
     Pass,
     Fail,
     Unknown,
+    /// The check does not apply to this lane (only for `semantic_parity` of a self-class lane).
+    NotApplicable,
 }
 
 impl Parity {
@@ -144,6 +156,7 @@ impl Parity {
             Self::Pass => "PASS",
             Self::Fail => "FAIL",
             Self::Unknown => "UNKNOWN",
+            Self::NotApplicable => "NOT_APPLICABLE",
         }
     }
 
@@ -152,6 +165,34 @@ impl Parity {
             "PASS" => Some(Self::Pass),
             "FAIL" => Some(Self::Fail),
             "UNKNOWN" => Some(Self::Unknown),
+            "NOT_APPLICABLE" => Some(Self::NotApplicable),
+            _ => None,
+        }
+    }
+}
+
+/// How a lane's output is gated before its timing counts.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ParityClass {
+    /// Same computation as the reference lane: token-identical to it.
+    Exact,
+    /// A different engine (e.g. llama.cpp): it must reproduce itself; agreement with the
+    /// reference is reported, not gated (Q-025 semantic validity, Q-030 ledger).
+    SelfOnly,
+}
+
+impl ParityClass {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Exact => "exact",
+            Self::SelfOnly => "self",
+        }
+    }
+
+    pub fn parse(text: &str) -> Option<Self> {
+        match text {
+            "exact" => Some(Self::Exact),
+            "self" => Some(Self::SelfOnly),
             _ => None,
         }
     }
@@ -394,6 +435,17 @@ pub fn decode(value: &Json) -> Result<Receipt, String> {
             &["NO_XID", "XID", "UNKNOWN"],
             DriverStatus::parse,
         )?,
+        placement: match field(lane_entries, "placement", "lane")? {
+            Json::Null => None,
+            value => Some(as_string(value, "lane.placement")?),
+        },
+        parity_class: enum_field(
+            lane_entries,
+            "parity_class",
+            "lane",
+            &["exact", "self"],
+            ParityClass::parse,
+        )?,
     };
 
     let sample_values = array_field(root, "samples", "receipt")?;
@@ -449,6 +501,13 @@ pub fn decode(value: &Json) -> Result<Receipt, String> {
         semantic_parity: enum_field(
             root,
             "semantic_parity",
+            "receipt",
+            &["PASS", "FAIL", "UNKNOWN", "NOT_APPLICABLE"],
+            Parity::parse,
+        )?,
+        self_reproducibility: enum_field(
+            root,
+            "self_reproducibility",
             "receipt",
             &["PASS", "FAIL", "UNKNOWN"],
             Parity::parse,
@@ -614,6 +673,23 @@ pub fn validate(receipt: &Receipt, expected_protocol_sha256: Option<&str>) -> Ve
         ));
     }
     non_empty(&mut errors, "lane.host_fingerprint", &lane.host_fingerprint);
+    if let Some(placement) = &lane.placement {
+        non_empty(&mut errors, "lane.placement", placement);
+    }
+    match (lane.parity_class, receipt.semantic_parity) {
+        (ParityClass::SelfOnly, Parity::NotApplicable) => {}
+        (ParityClass::SelfOnly, other) => errors.push(format!(
+            "semantic_parity: a self-class lane is not gated against the reference, expected NOT_APPLICABLE, found {}",
+            other.as_str()
+        )),
+        (ParityClass::Exact, Parity::NotApplicable) => errors.push(
+            "semantic_parity: an exact-class lane must report PASS, FAIL or UNKNOWN".into(),
+        ),
+        (ParityClass::Exact, _) => {}
+    }
+    if receipt.self_reproducibility == Parity::NotApplicable {
+        errors.push("self_reproducibility: every lane must report PASS, FAIL or UNKNOWN".into());
+    }
 
     if receipt.warmup_runs < 1 {
         errors.push(format!(
@@ -717,6 +793,9 @@ pub fn validate(receipt: &Receipt, expected_protocol_sha256: Option<&str>) -> Ve
 
 fn nullable_paths(receipt: &Receipt) -> Vec<String> {
     let mut paths = Vec::new();
+    if receipt.lane.placement.is_none() {
+        paths.push("lane.placement".to_string());
+    }
     if receipt.ambient_vram_mib.is_none() {
         paths.push("ambient_vram_mib".to_string());
     }
@@ -830,6 +909,11 @@ pub fn encode(receipt: &Receipt) -> Json {
                 ("model_sha256", Json::Str(l.model_sha256.clone())),
                 ("host_fingerprint", Json::Str(l.host_fingerprint.clone())),
                 ("driver_status", Json::Str(l.driver_status.as_str().into())),
+                (
+                    "placement",
+                    l.placement.clone().map_or(Json::Null, Json::Str),
+                ),
+                ("parity_class", Json::Str(l.parity_class.as_str().into())),
             ]),
         ),
         ("warmup_runs", num(receipt.warmup_runs as f64)),
@@ -858,6 +942,10 @@ pub fn encode(receipt: &Receipt) -> Json {
         (
             "semantic_parity",
             Json::Str(receipt.semantic_parity.as_str().into()),
+        ),
+        (
+            "self_reproducibility",
+            Json::Str(receipt.self_reproducibility.as_str().into()),
         ),
         (
             "derived",

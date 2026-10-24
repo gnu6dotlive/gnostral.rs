@@ -1,0 +1,411 @@
+From af826d3aca3d69f4269102eb6c51733e2e0b88c1 Mon Sep 17 00:00:00 2001
+From: Jordan <dev.in@gnu6.live>
+Date: Sat, 24 Oct 2026 15:36:13 +0000
+Subject: [PATCH] feat(placement): engine-reported layer placement, explicit
+ GPU layer count, native-path sizing test
+
+- DeviceMapSetting::into_mapper reports the placement it built to
+  GNOSTRAL_PLACEMENT_OUT (gnostral-trace feature): per-layer devices, the
+  non-mapped device and a canonical string such as 0-15:cuda:0,16-47:cpu;nm=cuda:0.
+- gnostral_capture --gpu-layers N pins an explicit map; it prints
+  GNOSTRAL_PLACEMENT <canonical> and records it in the capture's lane.
+- Test that walks the native GGUF path (archive, descriptor, adapter,
+  synthesized config, GGUF weight source, pack factor) and checks that the
+  device-map sizing drops host-loaded expert stacks; it fails without 0007.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_016D4Xz7aLLGu873oZNF6vk4
+---
+ mistralrs-core/src/device_map/mod.rs        |  12 +++
+ mistralrs-core/src/gnostral_trace.rs        | 109 ++++++++++++++++++++
+ mistralrs-core/src/pipeline/gguf.rs         | 106 +++++++++++++++++++
+ mistralrs/examples/gnostral_capture/main.rs |  63 ++++++++++-
+ 4 files changed, 285 insertions(+), 5 deletions(-)
+
+diff --git a/mistralrs-core/src/device_map/mod.rs b/mistralrs-core/src/device_map/mod.rs
+index bfbf013..33182e3 100644
+--- a/mistralrs-core/src/device_map/mod.rs
++++ b/mistralrs-core/src/device_map/mod.rs
+@@ -196,6 +196,18 @@ impl DeviceMapSetting {
+         device: &Device,
+         topology: Option<&Topology>,
+         all_devices: &[Device],
++    ) -> Result<Box<dyn DeviceMapper + Send + Sync>> {
++        let mapper = self.build(model_layers, device, topology, all_devices)?;
++        crate::gnostral_trace::report_placement(model_layers, device, mapper.as_ref());
++        Ok(mapper)
++    }
++
++    fn build(
++        &self,
++        model_layers: usize,
++        device: &Device,
++        topology: Option<&Topology>,
++        all_devices: &[Device],
+     ) -> Result<Box<dyn DeviceMapper + Send + Sync>> {
+         match self {
+             Self::Nccl { nm_device, comm } => {
+diff --git a/mistralrs-core/src/gnostral_trace.rs b/mistralrs-core/src/gnostral_trace.rs
+index 3341fa5..4f0f95b 100644
+--- a/mistralrs-core/src/gnostral_trace.rs
++++ b/mistralrs-core/src/gnostral_trace.rs
+@@ -105,6 +105,64 @@ mod imp {
+             }
+         }
+     }
++
++    const PLACEMENT_ENV: &str = "GNOSTRAL_PLACEMENT_OUT";
++
++    fn device_name(device: &candle_core::Device) -> String {
++        match device.location() {
++            candle_core::DeviceLocation::Cpu => "cpu".to_string(),
++            candle_core::DeviceLocation::Cuda { gpu_id } => format!("cuda:{gpu_id}"),
++            candle_core::DeviceLocation::Metal { gpu_id } => format!("metal:{gpu_id}"),
++        }
++    }
++
++    /// `0-15:cuda:0,16-47:cpu;nm=cuda:0`: per-layer devices as ranges, then the non-mapped device.
++    pub(crate) fn canonical_placement(layers: &[String], non_mapped: &str) -> String {
++        let mut ranges = Vec::new();
++        let mut start = 0;
++        for i in 1..=layers.len() {
++            if i == layers.len() || layers[i] != layers[start] {
++                ranges.push(format!("{start}-{}:{}", i - 1, layers[start]));
++                start = i;
++            }
++        }
++        format!("{};nm={non_mapped}", ranges.join(","))
++    }
++
++    /// Write the layer placement the mapper decided when `GNOSTRAL_PLACEMENT_OUT` is set.
++    ///
++    /// The engine's own report, not a parse of its logs: benchmark lanes pin it as identity. A later
++    /// mapper built in the same process overwrites the file, so the last load wins.
++    pub(crate) fn report_placement(
++        model_layers: usize,
++        non_mapped: &candle_core::Device,
++        mapper: &dyn crate::device_map::DeviceMapper,
++    ) {
++        let Some(out) = std::env::var_os(PLACEMENT_ENV) else {
++            return;
++        };
++        let layers: Vec<String> = (0..model_layers)
++            .map(|i| {
++                mapper
++                    .device_for(i, false)
++                    .map_or_else(|| "unmapped".to_string(), device_name)
++            })
++            .collect();
++        let nm = device_name(non_mapped);
++        let doc = serde_json::json!({
++            "schema": "gnostral.placement/1",
++            "layers": layers,
++            "non_mapped": nm,
++            "canonical": canonical_placement(&layers, &nm),
++        });
++        let path = std::path::PathBuf::from(out);
++        let tmp = path.with_extension("tmp");
++        let written =
++            std::fs::write(&tmp, doc.to_string()).and_then(|()| std::fs::rename(&tmp, &path));
++        if let Err(e) = written {
++            tracing::error!("cannot write placement report {}: {e}", path.display());
++        }
++    }
+ }
+ 
+ #[cfg(not(feature = "gnostral-trace"))]
+@@ -134,4 +192,55 @@ mod imp {
+ 
+     #[inline(always)]
+     pub(crate) fn reset() {}
++
++    #[inline(always)]
++    pub(crate) fn report_placement(
++        _model_layers: usize,
++        _non_mapped: &candle_core::Device,
++        _mapper: &dyn crate::device_map::DeviceMapper,
++    ) {
++    }
++}
++
++#[cfg(all(test, feature = "gnostral-trace"))]
++mod placement_tests {
++    use super::*;
++    use crate::device_map::{DeviceLayerMapMetadata, DeviceMapMetadata, DeviceMapSetting};
++    use candle_core::Device;
++
++    #[test]
++    fn canonical_placement_compresses_runs() {
++        let l = |v: &[&str]| v.iter().map(|s| s.to_string()).collect::<Vec<_>>();
++        assert_eq!(
++            canonical_placement(&l(&["cuda:0", "cuda:0", "cpu", "cpu", "cpu"]), "cuda:0"),
++            "0-1:cuda:0,2-4:cpu;nm=cuda:0"
++        );
++        assert_eq!(canonical_placement(&l(&["cpu"]), "cpu"), "0-0:cpu;nm=cpu");
++        assert_eq!(canonical_placement(&[], "cpu"), ";nm=cpu");
++    }
++
++    #[test]
++    fn into_mapper_reports_the_placement_it_built() -> candle_core::Result<()> {
++        let dir = std::env::temp_dir().join(format!("gnostral-placement-{}", std::process::id()));
++        std::fs::create_dir_all(&dir)?;
++        let out = dir.join("placement.json");
++        // No other test in this crate reads this variable.
++        std::env::set_var("GNOSTRAL_PLACEMENT_OUT", &out);
++        let setting = DeviceMapSetting::Map(DeviceMapMetadata::from_num_device_layers(vec![
++            DeviceLayerMapMetadata {
++                ordinal: 0,
++                layers: 3,
++            },
++        ]));
++        let built = setting.into_mapper(5, &Device::Cpu, None, &[Device::Cpu]);
++        std::env::remove_var("GNOSTRAL_PLACEMENT_OUT");
++        built?;
++        let doc: serde_json::Value = serde_json::from_str(&std::fs::read_to_string(&out)?)
++            .map_err(candle_core::Error::wrap)?;
++        assert_eq!(doc["schema"], "gnostral.placement/1");
++        assert_eq!(doc["layers"].as_array().map(Vec::len), Some(5));
++        assert_eq!(doc["canonical"], "0-4:cpu;nm=cpu");
++        std::fs::remove_dir_all(&dir).ok();
++        Ok(())
++    }
+ }
+diff --git a/mistralrs-core/src/pipeline/gguf.rs b/mistralrs-core/src/pipeline/gguf.rs
+index 6cddd5d..522347d 100644
+--- a/mistralrs-core/src/pipeline/gguf.rs
++++ b/mistralrs-core/src/pipeline/gguf.rs
+@@ -1806,3 +1806,109 @@ mod tests {
+         assert_eq!(config.matformer_slice_name.as_deref(), Some("small"));
+     }
+ }
++
++#[cfg(all(test, feature = "gnostral-expert-residency"))]
++mod native_residency_sizing_tests {
++    use super::*;
++    use crate::pipeline::loaders::{AutoDeviceMapQuantization, Qwen3MoELoader};
++    use crate::NormalLoaderType;
++    use candle_core::DType;
++    use mistralrs_quant::QuantizedWeightSource;
++
++    const CACHE_ENV: &str = "GNOSTRAL_EXPERT_CACHE_BYTES";
++
++    fn synthetic_gguf(dir: &Path) -> Option<PathBuf> {
++        let maker = Path::new(env!("CARGO_MANIFEST_DIR"))
++            .join("../../../harness/synthetic-moe/make_qwen3moe_gguf.py");
++        if !maker.exists() {
++            return None;
++        }
++        let out = dir.join("synth.gguf");
++        let status = std::process::Command::new("python3")
++            .arg("-I")
++            .arg(&maker)
++            .args([
++                "--out",
++                out.to_str()?,
++                "--layers",
++                "3",
++                "--experts",
++                "8",
++                "--top-k",
++                "2",
++            ])
++            .output()
++            .ok()?
++            .status;
++        status.success().then_some(out)
++    }
++
++    // Walks the steps `load_native_normal` and the normal pipeline take for a GGUF loaded with
++    // GgufModelBuilder (archive, descriptor, adapter, synthesized config, GGUF weight source,
++    // pack factor), then sizes layers exactly as the automatic device map does.
++    #[test]
++    fn native_gguf_device_map_sizing_drops_host_loaded_experts() -> Result<()> {
++        let dir = env::temp_dir().join(format!("gnostral-native-sizing-{}", std::process::id()));
++        fs::create_dir_all(&dir)?;
++        let Some(path) = synthetic_gguf(&dir) else {
++            eprintln!("synthetic GGUF generator not found; native sizing test skipped");
++            return Ok(());
++        };
++        let archive = Arc::new(mistralrs_quant::GgufArchive::open([&path])?);
++        let tensor_names = archive.tensors().keys().cloned().collect::<Vec<_>>();
++        let metadata_keys = archive
++            .metadata()
++            .keys()
++            .map(String::as_str)
++            .collect::<Vec<_>>();
++        let tensor_refs = tensor_names.iter().map(String::as_str).collect::<Vec<_>>();
++        let descriptor = GgufDescriptor::new("qwen3moe", &metadata_keys, &tensor_refs)?;
++        let resolved = resolve_native_adapter(&descriptor, None)?;
++        assert_eq!(resolved.adapter.loader, NormalLoaderType::Qwen3Moe);
++        let rope_pairing =
++            crate::gguf::normal_registry::schema_for(descriptor.architecture).rope_pairing;
++        let config =
++            synthesize_normal_config(&resolved.adapter.loader, archive.metadata(), &tensor_names)?;
++        let config = stamp_qk_rope_layout(&config, rope_pairing)?;
++        let bindings =
++            build_normal_bindings(&archive, &resolved.adapter.loader, descriptor.architecture)?;
++        let dtype = DType::F32;
++        let source = mistralrs_quant::GgufWeightSource::new(archive.clone(), &bindings, dtype)?;
++        let quantization = AutoDeviceMapQuantization::weight_source_with_topology(&source, None);
++        let pack = quantization.conservative_pack_factor(dtype, source.pack_factor(dtype)?);
++
++        let loader = Qwen3MoELoader;
++        let sizes = || -> Result<(Vec<usize>, usize)> {
++            Ok((
++                loader.layer_sizes_in_bytes(&config, dtype, pack, None)?,
++                loader.non_mapped_size_in_bytes(&config, dtype, pack, Some(&quantization), None)?,
++            ))
++        };
++        // No other test in this crate reads this variable.
++        env::remove_var(CACHE_ENV);
++        let (dense, dense_rest) = sizes()?;
++        env::set_var(CACHE_ENV, "4096");
++        let resident = sizes();
++        env::remove_var(CACHE_ENV);
++        let (res, res_rest) = resident?;
++
++        let cfg: serde_json::Value = serde_json::from_str(&config)?;
++        let (h, i, e) = (
++            cfg["hidden_size"].as_u64().unwrap() as usize,
++            cfg["moe_intermediate_size"].as_u64().unwrap() as usize,
++            cfg["num_experts"].as_u64().unwrap() as usize,
++        );
++        let stacks = e * 3 * (h * i / pack) * dtype.size_in_bytes();
++        assert_eq!(dense.len(), 3);
++        for (d, r) in dense.iter().zip(&res) {
++            assert_eq!(
++                d - r,
++                stacks,
++                "each mapped layer drops exactly its expert stacks"
++            );
++        }
++        assert_eq!(res_rest, dense_rest + 4096);
++        fs::remove_dir_all(&dir).ok();
++        Ok(())
++    }
++}
+diff --git a/mistralrs/examples/gnostral_capture/main.rs b/mistralrs/examples/gnostral_capture/main.rs
+index 9027755..c20d831 100644
+--- a/mistralrs/examples/gnostral_capture/main.rs
++++ b/mistralrs/examples/gnostral_capture/main.rs
+@@ -4,16 +4,23 @@
+ //! `cargo run --release --example gnostral_capture -p mistralrs --features gnostral-expert-residency -- \
+ //!   --model-dir DIR --file MODEL.gguf --manifest PROMPTS.json --promptset-sha256 HASH \
+ //!   --engine NAME --binary-sha256 HASH --model-sha256 HASH --max-tokens N --out CAPTURE.json [--cpu] [--no-prefix-cache] [--only ID,ID] \
+-//!   [--topn N --logprobs-out LOGPROBS.json]`
++//!   [--topn N --logprobs-out LOGPROBS.json] [--gpu-layers N]`
+ //!
+ //! Writes a `gnostral.quality.capture/1` document (token ids of the greedy top-1 logprob at
+ //! temperature 0) and prints one `GNOSTRAL_METRICS` line aggregated over every prompt.
++//!
++//! `--gpu-layers N` replaces the automatic device map with an explicit one (N layers on CUDA
++//! device 0, the rest on the CPU). With the `gnostral-trace` feature the engine reports the layer
++//! placement it actually built; the tool prints it as `GNOSTRAL_PLACEMENT <canonical>` and records it
++//! in the capture, so benchmark lanes can pin placement as part of their identity.
+ 
+ use anyhow::{bail, Context, Result};
+-use mistralrs::{GgufModelBuilder, RequestBuilder, TextMessageRole};
++use mistralrs::{DeviceMapSetting, GgufModelBuilder, RequestBuilder, TextMessageRole};
++use mistralrs_core::{DeviceLayerMapMetadata, DeviceMapMetadata};
+ use serde_json::{json, Value};
+ 
+ const CAPTURE_SCHEMA: &str = "gnostral.quality.capture/1";
++const PLACEMENT_ENV: &str = "GNOSTRAL_PLACEMENT_OUT";
+ 
+ struct Args {
+     model_dir: String,
+@@ -30,6 +37,7 @@ struct Args {
+     only: Option<Vec<String>>,
+     topn: usize,
+     logprobs_out: Option<String>,
++    gpu_layers: Option<usize>,
+ }
+ 
+ fn parse() -> Result<Args> {
+@@ -66,12 +74,39 @@ fn parse() -> Result<Args> {
+         only: take("--only").map(|v| v.split(',').map(str::to_owned).collect()),
+         topn: take("--topn").map(|v| v.parse()).transpose()?.unwrap_or(1),
+         logprobs_out: take("--logprobs-out"),
++        gpu_layers: take("--gpu-layers").map(|v| v.parse()).transpose()?,
+     })
+ }
+ 
+-#[tokio::main]
+-async fn main() -> Result<()> {
++fn main() -> Result<()> {
+     let args = parse()?;
++    if args.cpu && args.gpu_layers.is_some() {
++        bail!("--cpu and --gpu-layers contradict each other");
++    }
++    // The engine writes its placement report where this variable points; set before any runtime
++    // thread exists.
++    let placement_path = match std::env::var_os(PLACEMENT_ENV) {
++        Some(path) => std::path::PathBuf::from(path),
++        None => {
++            let path = std::path::PathBuf::from(format!("{}.placement.json", args.out));
++            std::env::set_var(PLACEMENT_ENV, &path);
++            path
++        }
++    };
++    let _ = std::fs::remove_file(&placement_path);
++    tokio::runtime::Builder::new_multi_thread()
++        .enable_all()
++        .build()?
++        .block_on(run(args, placement_path))
++}
++
++/// The canonical placement the engine reported, or `None` when it reported nothing.
++fn read_placement(path: &std::path::Path) -> Option<String> {
++    let doc: Value = serde_json::from_str(&std::fs::read_to_string(path).ok()?).ok()?;
++    doc["canonical"].as_str().map(str::to_owned)
++}
++
++async fn run(args: Args, placement_path: std::path::PathBuf) -> Result<()> {
+     let manifest: Value = serde_json::from_str(&std::fs::read_to_string(&args.manifest)?)?;
+     let prompts = manifest["prompts"]
+         .as_array()
+@@ -85,7 +120,20 @@ async fn main() -> Result<()> {
+     if args.no_prefix_cache {
+         builder = builder.with_prefix_cache_n(None);
+     }
++    if let Some(layers) = args.gpu_layers {
++        builder = builder.with_device_mapping(DeviceMapSetting::Map(
++            DeviceMapMetadata::from_num_device_layers(vec![DeviceLayerMapMetadata {
++                ordinal: 0,
++                layers,
++            }]),
++        ));
++    }
+     let model = builder.build().await?;
++    let placement = read_placement(&placement_path);
++    println!(
++        "GNOSTRAL_PLACEMENT {}",
++        placement.as_deref().unwrap_or("UNKNOWN")
++    );
+ 
+     let mut captures = Vec::new();
+     let mut logprob_docs = Vec::new();
+@@ -94,7 +142,11 @@ async fn main() -> Result<()> {
+     let mut ttft_ms = Vec::new();
+     for prompt in prompts {
+         let id = prompt["id"].as_str().context("prompt id")?;
+-        if args.only.as_ref().is_some_and(|only| !only.iter().any(|o| o == id)) {
++        if args
++            .only
++            .as_ref()
++            .is_some_and(|only| !only.iter().any(|o| o == id))
++        {
+             continue;
+         }
+         let text = prompt["text"].as_str().context("prompt text")?;
+@@ -148,6 +200,7 @@ async fn main() -> Result<()> {
+             "engine": args.engine,
+             "binary_sha256": args.binary_sha256,
+             "model_sha256": args.model_sha256,
++            "placement": placement,
+         },
+         "sampling": {"temperature": 0, "seed": 0, "max_tokens": args.max_tokens},
+         "captures": captures,
+-- 
+2.43.0
+

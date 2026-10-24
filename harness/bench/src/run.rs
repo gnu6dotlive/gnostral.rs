@@ -13,21 +13,33 @@
 //! reason in the receipt. Receipts are built only from these lines; the Pareto
 //! table is rendered only from validated receipts, and a blocked or failed lane
 //! aborts the comparison, not the run.
+//!
+//! Plan v2 adds two identity checks, both learned from a real run whose layer
+//! placement changed between loads (docs/FINDINGS.md, F-010):
+//!
+//! - every run prints `GNOSTRAL_PLACEMENT <canonical>` and it must equal the lane's
+//!   `expected_placement`, warmup included; a drift fails the lane;
+//! - the warmup prints `GNOSTRAL_SELF_REPRO REFERENCE` and keeps its output; every
+//!   measured run prints `GNOSTRAL_SELF_REPRO PASS|FAIL` after comparing its tokens
+//!   and logprob bits with that reference. A lane that does not reproduce itself
+//!   cannot be ranked.
 
 use std::collections::BTreeMap;
 
 use crate::compare::compare;
 use crate::json::{self, Json};
 use crate::receipt::{
-    self, Derived, DriverStatus, ExitStatus, LaneIdentity, Parity, ProtocolId, Receipt, Sample,
-    Sampling, SCHEMA_ID,
+    self, Derived, DriverStatus, ExitStatus, LaneIdentity, Parity, ParityClass, ProtocolId,
+    Receipt, Sample, Sampling, SCHEMA_ID,
 };
 use crate::stats::statistics;
 
-pub const PLAN_SCHEMA: &str = "gnostral.rs/engine-benchmark-plan/v1";
+pub const PLAN_SCHEMA: &str = "gnostral.rs/engine-benchmark-plan/v2";
 pub const METRICS_PREFIX: &str = "GNOSTRAL_METRICS ";
 pub const PARITY_PREFIX: &str = "GNOSTRAL_PARITY ";
 pub const DRIVER_PREFIX: &str = "GNOSTRAL_DRIVER ";
+pub const PLACEMENT_PREFIX: &str = "GNOSTRAL_PLACEMENT ";
+pub const SELF_REPRO_PREFIX: &str = "GNOSTRAL_SELF_REPRO ";
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct LanePlan {
@@ -38,6 +50,9 @@ pub struct LanePlan {
     pub expected_model_sha256: String,
     pub host_fingerprint: String,
     pub argv: Vec<String>,
+    /// Canonical placement every run of this lane must report.
+    pub expected_placement: String,
+    pub parity_class: ParityClass,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -175,8 +190,18 @@ pub fn decode_plan(v: &Json) -> Result<Plan, String> {
                 "expected_model_sha256",
                 "host_fingerprint",
                 "argv",
+                "expected_placement",
+                "parity_class",
             ],
         )?;
+        let expected_placement = text(l, "expected_placement", &path)?;
+        if expected_placement.trim().is_empty() {
+            return Err(format!("{path}.expected_placement: must not be empty"));
+        }
+        let class = text(l, "parity_class", &path)?;
+        let parity_class = ParityClass::parse(&class).ok_or_else(|| {
+            format!("{path}.parity_class: expected \"exact\" or \"self\", found {class:?}")
+        })?;
         lanes.push(LanePlan {
             engine: text(l, "engine", &path)?,
             binary_path: text(l, "binary_path", &path)?,
@@ -185,6 +210,8 @@ pub fn decode_plan(v: &Json) -> Result<Plan, String> {
             expected_model_sha256: text(l, "expected_model_sha256", &path)?,
             host_fingerprint: text(l, "host_fingerprint", &path)?,
             argv: argv(get(l, "argv", &path)?, &format!("{path}.argv"))?,
+            expected_placement,
+            parity_class,
         });
     }
     let mut seen = std::collections::BTreeSet::new();
@@ -264,6 +291,30 @@ pub struct RunRecord {
     pub output: Result<Output, String>,
     pub metrics: Result<Metrics, String>,
     pub parity: Parity,
+    /// What the run printed after `GNOSTRAL_PLACEMENT `, if anything.
+    pub placement: Option<String>,
+    pub self_repro: SelfRepro,
+}
+
+/// A run's `GNOSTRAL_SELF_REPRO` report.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SelfRepro {
+    /// This run's output is the lane's reference (the warmup).
+    Reference,
+    Pass,
+    Fail,
+    Unknown,
+}
+
+impl SelfRepro {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Reference => "REFERENCE",
+            Self::Pass => "PASS",
+            Self::Fail => "FAIL",
+            Self::Unknown => "UNKNOWN",
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -313,6 +364,35 @@ pub fn parse_metrics(stdout: &str) -> Result<Metrics, String> {
         vram_used_mib: opt("vram_used_mib")?,
         host_rss_peak_mib: opt("host_rss_peak_mib")?,
     })
+}
+
+/// The single value after `prefix`, or `None` if the line is absent or repeated.
+fn single_line<'a>(stdout: &'a str, prefix: &str) -> Option<&'a str> {
+    let found: Vec<&str> = stdout
+        .lines()
+        .filter_map(|l| l.strip_prefix(prefix))
+        .map(str::trim)
+        .collect();
+    match found[..] {
+        [one] => Some(one),
+        _ => None,
+    }
+}
+
+pub fn parse_placement(stdout: &str) -> Option<String> {
+    single_line(stdout, PLACEMENT_PREFIX)
+        .filter(|p| !p.is_empty() && *p != "UNKNOWN")
+        .map(str::to_owned)
+}
+
+/// The first word decides; anything after it is detail kept in the raw output.
+pub fn parse_self_repro(stdout: &str) -> SelfRepro {
+    match single_line(stdout, SELF_REPRO_PREFIX).and_then(|v| v.split_whitespace().next()) {
+        Some("REFERENCE") => SelfRepro::Reference,
+        Some("PASS") => SelfRepro::Pass,
+        Some("FAIL") => SelfRepro::Fail,
+        _ => SelfRepro::Unknown,
+    }
 }
 
 fn parse_parity(stdout: &str) -> Parity {
@@ -419,6 +499,10 @@ pub fn execute(plan: &Plan, exec: &mut dyn Executor) -> Bundle {
             Ok(_) => (Err("non-zero exit".into()), Parity::Unknown),
             Err(e) => (Err(e.clone()), Parity::Unknown),
         };
+        let (placement, self_repro) = match &output {
+            Ok(o) => (parse_placement(&o.stdout), parse_self_repro(&o.stdout)),
+            Err(_) => (None, SelfRepro::Unknown),
+        };
         records.push(RunRecord {
             lane: engine.clone(),
             phase: *phase,
@@ -426,6 +510,8 @@ pub fn execute(plan: &Plan, exec: &mut dyn Executor) -> Bundle {
             output,
             metrics,
             parity,
+            placement,
+            self_repro,
         });
     }
 
@@ -468,9 +554,11 @@ fn build_receipt(
     driver: DriverStatus,
     records: &[RunRecord],
 ) -> Result<Receipt, String> {
-    let measured: Vec<&RunRecord> = records
+    let mine: Vec<&RunRecord> = records.iter().filter(|r| r.lane == lane.engine).collect();
+    let measured: Vec<&RunRecord> = mine
         .iter()
-        .filter(|r| r.lane == lane.engine && r.phase == RunPhase::Measured)
+        .copied()
+        .filter(|r| r.phase == RunPhase::Measured)
         .collect();
     let failed: Vec<String> = measured
         .iter()
@@ -485,6 +573,27 @@ fn build_receipt(
         return Err(format!(
             "FAILED runs kept in the bundle: {}",
             failed.join("; ")
+        ));
+    }
+    // Placement is identity: every completed run, warmup included, must report the pinned placement.
+    let drift: Vec<String> = mine
+        .iter()
+        .filter(|r| r.output.as_ref().is_ok_and(|o| o.exit_ok))
+        .filter(|r| r.placement.as_deref() != Some(lane.expected_placement.as_str()))
+        .map(|r| {
+            format!(
+                "{} {} reported {}",
+                phase_name(r.phase),
+                r.index,
+                r.placement.as_deref().unwrap_or("no placement")
+            )
+        })
+        .collect();
+    if !drift.is_empty() {
+        return Err(format!(
+            "PLACEMENT: plan pins {:?}; {}",
+            lane.expected_placement,
+            drift.join("; ")
         ));
     }
     let mut unknowns = BTreeMap::new();
@@ -526,10 +635,20 @@ fn build_receipt(
     let decode: Vec<f64> = samples.iter().map(|s| s.decode_tok_s).collect();
     let stats = statistics(&decode).ok_or("no measured samples")?;
     let parities: Vec<Parity> = measured.iter().map(|r| r.parity).collect();
-    let semantic_parity = if parities.iter().all(|p| *p == Parity::Pass) {
-        Parity::Pass
-    } else if parities.contains(&Parity::Fail) {
+    let semantic_parity = match lane.parity_class {
+        ParityClass::SelfOnly => Parity::NotApplicable,
+        ParityClass::Exact if parities.iter().all(|p| *p == Parity::Pass) => Parity::Pass,
+        ParityClass::Exact if parities.contains(&Parity::Fail) => Parity::Fail,
+        ParityClass::Exact => Parity::Unknown,
+    };
+    let has_reference = mine
+        .iter()
+        .any(|r| r.phase == RunPhase::Warmup && r.self_repro == SelfRepro::Reference);
+    let repro: Vec<SelfRepro> = measured.iter().map(|r| r.self_repro).collect();
+    let self_reproducibility = if repro.contains(&SelfRepro::Fail) {
         Parity::Fail
+    } else if has_reference && repro.iter().all(|r| *r == SelfRepro::Pass) {
+        Parity::Pass
     } else {
         Parity::Unknown
     };
@@ -546,12 +665,15 @@ fn build_receipt(
             model_sha256: lane.expected_model_sha256.clone(),
             host_fingerprint: lane.host_fingerprint.clone(),
             driver_status: driver,
+            placement: Some(lane.expected_placement.clone()),
+            parity_class: lane.parity_class,
         },
         warmup_runs: plan.warmup_runs,
         samples,
         ambient_vram_mib: None,
         reclaim_delta_mib: None,
         semantic_parity,
+        self_reproducibility,
         derived: Derived {
             sample_count: decode.len() as u64,
             median_decode_tok_s: stats.median,
@@ -603,6 +725,11 @@ pub fn bundle_json(b: &Bundle) -> Json {
                     r.metrics.as_ref().err().map_or(Json::Null, |e| s(e)),
                 ),
                 ("parity".into(), s(r.parity.as_str())),
+                (
+                    "placement".into(),
+                    r.placement.as_deref().map_or(Json::Null, s),
+                ),
+                ("self_reproducibility".into(), s(r.self_repro.as_str())),
                 ("stdout".into(), stdout),
                 ("stderr".into(), stderr),
             ])
