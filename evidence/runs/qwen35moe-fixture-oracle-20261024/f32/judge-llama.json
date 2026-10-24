@@ -1,0 +1,140 @@
+{
+ "steps": 1024,
+ "reference_argmax_differs": 0,
+ "logprob_gap": {
+  "n": 1674,
+  "median": 0.00034110999433581424,
+  "p99": 0.003404959080306913,
+  "max": 0.005811166161864723
+ },
+ "per_prompt": {
+  "q01-capital": {
+   "prompt_tokens": 73,
+   "steps_where_reference_argmax_differs": []
+  },
+  "q02-arith-mul": {
+   "prompt_tokens": 74,
+   "steps_where_reference_argmax_differs": []
+  },
+  "q03-arith-word": {
+   "prompt_tokens": 100,
+   "steps_where_reference_argmax_differs": []
+  },
+  "q04-units": {
+   "prompt_tokens": 76,
+   "steps_where_reference_argmax_differs": []
+  },
+  "q05-rust-fn": {
+   "prompt_tokens": 114,
+   "steps_where_reference_argmax_differs": []
+  },
+  "q06-python-fn": {
+   "prompt_tokens": 112,
+   "steps_where_reference_argmax_differs": []
+  },
+  "q07-sql": {
+   "prompt_tokens": 171,
+   "steps_where_reference_argmax_differs": []
+  },
+  "q08-regex": {
+   "prompt_tokens": 121,
+   "steps_where_reference_argmax_differs": []
+  },
+  "q09-bug": {
+   "prompt_tokens": 113,
+   "steps_where_reference_argmax_differs": []
+  },
+  "q10-fr-explain": {
+   "prompt_tokens": 109,
+   "steps_where_reference_argmax_differs": []
+  },
+  "q11-fr-translate": {
+   "prompt_tokens": 128,
+   "steps_where_reference_argmax_differs": []
+  },
+  "q12-de-translate": {
+   "prompt_tokens": 105,
+   "steps_where_reference_argmax_differs": []
+  },
+  "q13-es-short": {
+   "prompt_tokens": 94,
+   "steps_where_reference_argmax_differs": []
+  },
+  "q14-list-format": {
+   "prompt_tokens": 116,
+   "steps_where_reference_argmax_differs": []
+  },
+  "q15-json-format": {
+   "prompt_tokens": 114,
+   "steps_where_reference_argmax_differs": []
+  },
+  "q16-yes-no": {
+   "prompt_tokens": 108,
+   "steps_where_reference_argmax_differs": []
+  },
+  "q17-logic": {
+   "prompt_tokens": 131,
+   "steps_where_reference_argmax_differs": []
+  },
+  "q18-sequence": {
+   "prompt_tokens": 99,
+   "steps_where_reference_argmax_differs": []
+  },
+  "q19-summary-tech": {
+   "prompt_tokens": 117,
+   "steps_where_reference_argmax_differs": []
+  },
+  "q20-summary-memory": {
+   "prompt_tokens": 115,
+   "steps_where_reference_argmax_differs": []
+  },
+  "q21-compare": {
+   "prompt_tokens": 80,
+   "steps_where_reference_argmax_differs": []
+  },
+  "q22-definition": {
+   "prompt_tokens": 113,
+   "steps_where_reference_argmax_differs": []
+  },
+  "q23-steps": {
+   "prompt_tokens": 132,
+   "steps_where_reference_argmax_differs": []
+  },
+  "q24-math-algebra": {
+   "prompt_tokens": 64,
+   "steps_where_reference_argmax_differs": []
+  },
+  "q25-math-prob": {
+   "prompt_tokens": 122,
+   "steps_where_reference_argmax_differs": []
+  },
+  "q26-history": {
+   "prompt_tokens": 110,
+   "steps_where_reference_argmax_differs": []
+  },
+  "q27-science": {
+   "prompt_tokens": 74,
+   "steps_where_reference_argmax_differs": []
+  },
+  "q28-rewrite": {
+   "prompt_tokens": 126,
+   "steps_where_reference_argmax_differs": []
+  },
+  "q29-code-explain": {
+   "prompt_tokens": 118,
+   "steps_where_reference_argmax_differs": []
+  },
+  "q30-constraint": {
+   "prompt_tokens": 102,
+   "steps_where_reference_argmax_differs": []
+  },
+  "q31-long-instruction": {
+   "prompt_tokens": 332,
+   "steps_where_reference_argmax_differs": []
+  },
+  "q32-refusal-boundary": {
+   "prompt_tokens": 102,
+   "steps_where_reference_argmax_differs": []
+  }
+ }
+}

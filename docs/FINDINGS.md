@@ -316,6 +316,49 @@ Rules:
   allowed. Found while checking the owner's updated report against the source, before anyone used the
   tool's verdict.
 
+### F-028 · 2026-10-24 · On a qwen35moe fixture the engine matches the model definition; llama.cpp does not on k-quant experts
+
+- **Class:** OBSERVED against a float64 reference; two independent implementations agree with it (the
+  engine through candle, and gguf-py's dequantisers inside the reference).
+- **Setup:** `make_qwen35moe_gguf.py` fixture (3 Gated DeltaNet layers, 1 gated full attention layer,
+  routed plus shared experts), loaded by the engine's plain qwen35moe path and by llama.cpp b11857.
+  `qwen35moe_reference.py` is written from transformers 5.20.2 `modeling_qwen3_5_moe.py` and the
+  transformations of llama.cpp's own converter; each engine is judged by teacher forcing on its own
+  tokens (reference argmax at every step, gap to its top-2 logprobs).
+- **What:** with F32 experts both engines match the reference (argmax differs 0/1024 for each; gap at
+  most 0.001 nats for the engine, 0.006 for llama.cpp) and produce identical tokens, 1024/1024. With
+  Q2_K/Q3_K experts the engine still matches (0/1024, max gap 0.003), llama.cpp does not: the
+  reference argmax differs at 82/1024 steps, median gap 0.11 nats, maximum 23. Disabling llama.cpp's
+  weight repacking changes nothing (82/1024); Q2_K alone (gate/up) and Q3_K alone (down) each show it
+  (median gap 0.043 and 0.010 nats against the engine's 5e-5 and 7e-5). Both engines are consistent
+  with themselves: decode-path tokens equal one-prefill tokens at 192/192 steps each.
+- **Not known:** the cause inside llama.cpp. The expert blocks are random, possibly unlike real
+  weights, and the host has AVX-512 and AMX; nothing here says llama.cpp is wrong on real models.
+- **Consequence:** a second engine is a witness, not a referee. Agreement with llama.cpp is not evidence
+  of correctness on k-quant fixtures (the llama.cpp lane is already parity class `self`). The reference
+  becomes the qwen35moe oracle for the residency port: residency output, plain output and reference.
+- **Evidence:** `evidence/runs/qwen35moe-fixture-oracle-20261024/`.
+
+### F-029 · 2026-10-24 · I first read the cross-engine divergence as a possible engine fault
+
+- **Class:** PROCESS.
+- **What:** the engine and llama.cpp agreed on every first token and diverged at step 2 on 15 of 32
+  prompts, always the same two tokens swapped. I treated llama.cpp as the reference and looked for a
+  fault in the engine's recurrent-state handoff. Each engine's self-consistency check passed, ablations
+  on random weights were too noisy to decide, and only the float64 reference showed the deviation was
+  on llama.cpp's side, in its k-quant experts, not in the linear attention.
+- **Rule taken:** build the referee before attributing a difference between two implementations.
+
+### F-030 · 2026-10-24 · The engine's plain qwen35moe CPU path is far slower than llama.cpp on these fixtures
+
+- **Class:** OBSERVED (single runs per fixture); cause UNKNOWN.
+- **What:** decode 20 tok/s with Q2_K/Q3_K experts and 92 tok/s with F32 experts, against llama.cpp's
+  1275 and 762 tok/s on the same files and host. The engine's runs show system time close to user time
+  (57 s of system time in a 126 s run).
+- **Hypothesis to test, not a conclusion:** per-step allocation or dequantisation in the qwen35moe expert
+  or Gated DeltaNet path. It matters for the port: residency on top of this path should wait for its
+  profile.
+
 ## Evidence not yet in the repository
 
 These directories exist on the lab disk only. Until they are committed they are not program

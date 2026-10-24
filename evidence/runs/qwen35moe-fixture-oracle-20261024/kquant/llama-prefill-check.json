@@ -1,0 +1,2453 @@
+[
+ {
+  "prompt_id": "q01-capital",
+  "prompt_tokens": 73,
+  "rows": [
+   {
+    "step": 0,
+    "decode_token": 135,
+    "prefill_token": 135,
+    "prefill_top2": [
+     [
+      135,
+      -5.006915671401657e-05
+     ],
+     [
+      196,
+      -9.92604923248291
+     ]
+    ]
+   },
+   {
+    "step": 1,
+    "decode_token": 102,
+    "prefill_token": 102,
+    "prefill_top2": [
+     [
+      102,
+      -0.7467202544212341
+     ],
+     [
+      32,
+      -0.762844979763031
+     ]
+    ]
+   },
+   {
+    "step": 2,
+    "decode_token": 199,
+    "prefill_token": 199,
+    "prefill_top2": null
+   },
+   {
+    "step": 3,
+    "decode_token": 204,
+    "prefill_token": 204,
+    "prefill_top2": null
+   },
+   {
+    "step": 4,
+    "decode_token": 88,
+    "prefill_token": 88,
+    "prefill_top2": [
+     [
+      88,
+      -0.235555499792099
+     ],
+     [
+      25,
+      -2.6814136505126953
+     ]
+    ]
+   },
+   {
+    "step": 5,
+    "decode_token": 244,
+    "prefill_token": 244,
+    "prefill_top2": null
+   }
+  ]
+ },
+ {
+  "prompt_id": "q02-arith-mul",
+  "prompt_tokens": 74,
+  "rows": [
+   {
+    "step": 0,
+    "decode_token": 135,
+    "prefill_token": 135,
+    "prefill_top2": [
+     [
+      135,
+      -3.862455560010858e-05
+     ],
+     [
+      196,
+      -10.198204040527344
+     ]
+    ]
+   },
+   {
+    "step": 1,
+    "decode_token": 102,
+    "prefill_token": 102,
+    "prefill_top2": [
+     [
+      102,
+      -0.7286713123321533
+     ],
+     [
+      32,
+      -0.835486650466919
+     ]
+    ]
+   },
+   {
+    "step": 2,
+    "decode_token": 199,
+    "prefill_token": 199,
+    "prefill_top2": null
+   },
+   {
+    "step": 3,
+    "decode_token": 204,
+    "prefill_token": 204,
+    "prefill_top2": null
+   },
+   {
+    "step": 4,
+    "decode_token": 88,
+    "prefill_token": 88,
+    "prefill_top2": [
+     [
+      88,
+      -0.13485944271087646
+     ],
+     [
+      25,
+      -2.9837000370025635
+     ]
+    ]
+   },
+   {
+    "step": 5,
+    "decode_token": 244,
+    "prefill_token": 244,
+    "prefill_top2": null
+   }
+  ]
+ },
+ {
+  "prompt_id": "q03-arith-word",
+  "prompt_tokens": 100,
+  "rows": [
+   {
+    "step": 0,
+    "decode_token": 135,
+    "prefill_token": 135,
+    "prefill_top2": [
+     [
+      135,
+      -2.8133788873674348e-05
+     ],
+     [
+      196,
+      -10.509915351867676
+     ]
+    ]
+   },
+   {
+    "step": 1,
+    "decode_token": 32,
+    "prefill_token": 32,
+    "prefill_top2": [
+     [
+      32,
+      -0.572080135345459
+     ],
+     [
+      102,
+      -1.0372899770736694
+     ]
+    ]
+   },
+   {
+    "step": 2,
+    "decode_token": 19,
+    "prefill_token": 19,
+    "prefill_top2": [
+     [
+      19,
+      -0.0002910918556153774
+     ],
+     [
+      99,
+      -8.471631050109863
+     ]
+    ]
+   },
+   {
+    "step": 3,
+    "decode_token": 90,
+    "prefill_token": 90,
+    "prefill_top2": [
+     [
+      90,
+      -0.25029224157333374
+     ],
+     [
+      58,
+      -2.3688130378723145
+     ]
+    ]
+   },
+   {
+    "step": 4,
+    "decode_token": 202,
+    "prefill_token": 202,
+    "prefill_top2": null
+   },
+   {
+    "step": 5,
+    "decode_token": 234,
+    "prefill_token": 234,
+    "prefill_top2": null
+   }
+  ]
+ },
+ {
+  "prompt_id": "q04-units",
+  "prompt_tokens": 76,
+  "rows": [
+   {
+    "step": 0,
+    "decode_token": 135,
+    "prefill_token": 135,
+    "prefill_top2": [
+     [
+      135,
+      -7.260109123308212e-05
+     ],
+     [
+      196,
+      -9.566184997558594
+     ]
+    ]
+   },
+   {
+    "step": 1,
+    "decode_token": 102,
+    "prefill_token": 102,
+    "prefill_top2": [
+     [
+      102,
+      -0.37892457842826843
+     ],
+     [
+      32,
+      -1.281657338142395
+     ]
+    ]
+   },
+   {
+    "step": 2,
+    "decode_token": 199,
+    "prefill_token": 199,
+    "prefill_top2": null
+   },
+   {
+    "step": 3,
+    "decode_token": 204,
+    "prefill_token": 204,
+    "prefill_top2": null
+   },
+   {
+    "step": 4,
+    "decode_token": 88,
+    "prefill_token": 88,
+    "prefill_top2": [
+     [
+      88,
+      -0.42321035265922546
+     ],
+     [
+      25,
+      -2.0425798892974854
+     ]
+    ]
+   },
+   {
+    "step": 5,
+    "decode_token": 244,
+    "prefill_token": 244,
+    "prefill_top2": null
+   }
+  ]
+ },
+ {
+  "prompt_id": "q05-rust-fn",
+  "prompt_tokens": 114,
+  "rows": [
+   {
+    "step": 0,
+    "decode_token": 135,
+    "prefill_token": 135,
+    "prefill_top2": [
+     [
+      135,
+      -5.018836964154616e-05
+     ],
+     [
+      196,
+      -9.92944049835205
+     ]
+    ]
+   },
+   {
+    "step": 1,
+    "decode_token": 32,
+    "prefill_token": 32,
+    "prefill_top2": [
+     [
+      32,
+      -0.42910104990005493
+     ],
+     [
+      102,
+      -1.3414087295532227
+     ]
+    ]
+   },
+   {
+    "step": 2,
+    "decode_token": 19,
+    "prefill_token": 19,
+    "prefill_top2": [
+     [
+      19,
+      -0.0003729561867658049
+     ],
+     [
+      99,
+      -8.16757869720459
+     ]
+    ]
+   },
+   {
+    "step": 3,
+    "decode_token": 90,
+    "prefill_token": 90,
+    "prefill_top2": [
+     [
+      90,
+      -0.2863638401031494
+     ],
+     [
+      58,
+      -2.4242899417877197
+     ]
+    ]
+   },
+   {
+    "step": 4,
+    "decode_token": 202,
+    "prefill_token": 202,
+    "prefill_top2": null
+   },
+   {
+    "step": 5,
+    "decode_token": 26,
+    "prefill_token": 26,
+    "prefill_top2": [
+     [
+      26,
+      -0.6910715103149414
+     ],
+     [
+      234,
+      -0.7055864930152893
+     ]
+    ]
+   }
+  ]
+ },
+ {
+  "prompt_id": "q06-python-fn",
+  "prompt_tokens": 112,
+  "rows": [
+   {
+    "step": 0,
+    "decode_token": 135,
+    "prefill_token": 135,
+    "prefill_top2": [
+     [
+      135,
+      -0.000104313570773229
+     ],
+     [
+      196,
+      -9.191990852355957
+     ]
+    ]
+   },
+   {
+    "step": 1,
+    "decode_token": 32,
+    "prefill_token": 32,
+    "prefill_top2": [
+     [
+      32,
+      -0.7309589385986328
+     ],
+     [
+      102,
+      -0.8051280975341797
+     ]
+    ]
+   },
+   {
+    "step": 2,
+    "decode_token": 19,
+    "prefill_token": 19,
+    "prefill_top2": [
+     [
+      19,
+      -0.0003654432366602123
+     ],
+     [
+      99,
+      -8.254887580871582
+     ]
+    ]
+   },
+   {
+    "step": 3,
+    "decode_token": 90,
+    "prefill_token": 90,
+    "prefill_top2": [
+     [
+      90,
+      -0.24786032736301422
+     ],
+     [
+      58,
+      -2.411062717437744
+     ]
+    ]
+   },
+   {
+    "step": 4,
+    "decode_token": 202,
+    "prefill_token": 202,
+    "prefill_top2": null
+   },
+   {
+    "step": 5,
+    "decode_token": 234,
+    "prefill_token": 234,
+    "prefill_top2": null
+   }
+  ]
+ },
+ {
+  "prompt_id": "q07-sql",
+  "prompt_tokens": 171,
+  "rows": [
+   {
+    "step": 0,
+    "decode_token": 135,
+    "prefill_token": 135,
+    "prefill_top2": [
+     [
+      135,
+      -4.971151065547019e-05
+     ],
+     [
+      196,
+      -9.938159942626953
+     ]
+    ]
+   },
+   {
+    "step": 1,
+    "decode_token": 102,
+    "prefill_token": 102,
+    "prefill_top2": [
+     [
+      102,
+      -0.4112051725387573
+     ],
+     [
+      32,
+      -1.2068670988082886
+     ]
+    ]
+   },
+   {
+    "step": 2,
+    "decode_token": 199,
+    "prefill_token": 199,
+    "prefill_top2": null
+   },
+   {
+    "step": 3,
+    "decode_token": 204,
+    "prefill_token": 204,
+    "prefill_top2": null
+   },
+   {
+    "step": 4,
+    "decode_token": 88,
+    "prefill_token": 88,
+    "prefill_top2": [
+     [
+      88,
+      -0.30999812483787537
+     ],
+     [
+      25,
+      -2.2375683784484863
+     ]
+    ]
+   },
+   {
+    "step": 5,
+    "decode_token": 244,
+    "prefill_token": 244,
+    "prefill_top2": null
+   }
+  ]
+ },
+ {
+  "prompt_id": "q08-regex",
+  "prompt_tokens": 121,
+  "rows": [
+   {
+    "step": 0,
+    "decode_token": 135,
+    "prefill_token": 135,
+    "prefill_top2": [
+     [
+      135,
+      -4.2439409298822284e-05
+     ],
+     [
+      196,
+      -10.091744422912598
+     ]
+    ]
+   },
+   {
+    "step": 1,
+    "decode_token": 32,
+    "prefill_token": 32,
+    "prefill_top2": [
+     [
+      32,
+      -0.548993706703186
+     ],
+     [
+      102,
+      -1.1390472650527954
+     ]
+    ]
+   },
+   {
+    "step": 2,
+    "decode_token": 19,
+    "prefill_token": 19,
+    "prefill_top2": [
+     [
+      19,
+      -0.00026271218666806817
+     ],
+     [
+      99,
+      -8.539786338806152
+     ]
+    ]
+   },
+   {
+    "step": 3,
+    "decode_token": 90,
+    "prefill_token": 90,
+    "prefill_top2": [
+     [
+      90,
+      -0.3543897867202759
+     ],
+     [
+      58,
+      -2.108463764190674
+     ]
+    ]
+   },
+   {
+    "step": 4,
+    "decode_token": 202,
+    "prefill_token": 202,
+    "prefill_top2": null
+   },
+   {
+    "step": 5,
+    "decode_token": 26,
+    "prefill_token": 26,
+    "prefill_top2": [
+     [
+      26,
+      -0.6814409494400024
+     ],
+     [
+      234,
+      -0.7236181497573853
+     ]
+    ]
+   }
+  ]
+ },
+ {
+  "prompt_id": "q09-bug",
+  "prompt_tokens": 113,
+  "rows": [
+   {
+    "step": 0,
+    "decode_token": 135,
+    "prefill_token": 135,
+    "prefill_top2": [
+     [
+      135,
+      -7.927732076495886e-05
+     ],
+     [
+      196,
+      -9.47016429901123
+     ]
+    ]
+   },
+   {
+    "step": 1,
+    "decode_token": 32,
+    "prefill_token": 32,
+    "prefill_top2": [
+     [
+      32,
+      -0.3470713198184967
+     ],
+     [
+      102,
+      -1.4454256296157837
+     ]
+    ]
+   },
+   {
+    "step": 2,
+    "decode_token": 19,
+    "prefill_token": 19,
+    "prefill_top2": [
+     [
+      19,
+      -0.0003599576302804053
+     ],
+     [
+      99,
+      -8.221131324768066
+     ]
+    ]
+   },
+   {
+    "step": 3,
+    "decode_token": 90,
+    "prefill_token": 90,
+    "prefill_top2": [
+     [
+      90,
+      -0.27143386006355286
+     ],
+     [
+      58,
+      -2.272221565246582
+     ]
+    ]
+   },
+   {
+    "step": 4,
+    "decode_token": 202,
+    "prefill_token": 202,
+    "prefill_top2": null
+   },
+   {
+    "step": 5,
+    "decode_token": 26,
+    "prefill_token": 26,
+    "prefill_top2": [
+     [
+      26,
+      -0.50722736120224
+     ],
+     [
+      234,
+      -0.9309830665588379
+     ]
+    ]
+   }
+  ]
+ },
+ {
+  "prompt_id": "q10-fr-explain",
+  "prompt_tokens": 109,
+  "rows": [
+   {
+    "step": 0,
+    "decode_token": 135,
+    "prefill_token": 135,
+    "prefill_top2": [
+     [
+      135,
+      -1.5735749911982566e-05
+     ],
+     [
+      196,
+      -11.10430908203125
+     ]
+    ]
+   },
+   {
+    "step": 1,
+    "decode_token": 32,
+    "prefill_token": 32,
+    "prefill_top2": [
+     [
+      32,
+      -0.7085893750190735
+     ],
+     [
+      102,
+      -0.8495844602584839
+     ]
+    ]
+   },
+   {
+    "step": 2,
+    "decode_token": 19,
+    "prefill_token": 19,
+    "prefill_top2": [
+     [
+      19,
+      -0.00034695921931415796
+     ],
+     [
+      99,
+      -8.286001205444336
+     ]
+    ]
+   },
+   {
+    "step": 3,
+    "decode_token": 90,
+    "prefill_token": 90,
+    "prefill_top2": [
+     [
+      90,
+      -0.24284403026103973
+     ],
+     [
+      58,
+      -2.3994507789611816
+     ]
+    ]
+   },
+   {
+    "step": 4,
+    "decode_token": 160,
+    "prefill_token": 160,
+    "prefill_top2": [
+     [
+      160,
+      -0.537662148475647
+     ],
+     [
+      202,
+      -1.0224605798721313
+     ]
+    ]
+   },
+   {
+    "step": 5,
+    "decode_token": 13,
+    "prefill_token": 13,
+    "prefill_top2": [
+     [
+      13,
+      -0.7015470266342163
+     ],
+     [
+      222,
+      -1.380616545677185
+     ]
+    ]
+   }
+  ]
+ },
+ {
+  "prompt_id": "q11-fr-translate",
+  "prompt_tokens": 128,
+  "rows": [
+   {
+    "step": 0,
+    "decode_token": 135,
+    "prefill_token": 135,
+    "prefill_top2": [
+     [
+      135,
+      -4.8638572479831055e-05
+     ],
+     [
+      196,
+      -9.95926570892334
+     ]
+    ]
+   },
+   {
+    "step": 1,
+    "decode_token": 102,
+    "prefill_token": 102,
+    "prefill_top2": [
+     [
+      102,
+      -0.6810811758041382
+     ],
+     [
+      32,
+      -0.8174871206283569
+     ]
+    ]
+   },
+   {
+    "step": 2,
+    "decode_token": 199,
+    "prefill_token": 199,
+    "prefill_top2": null
+   },
+   {
+    "step": 3,
+    "decode_token": 204,
+    "prefill_token": 204,
+    "prefill_top2": null
+   },
+   {
+    "step": 4,
+    "decode_token": 88,
+    "prefill_token": 88,
+    "prefill_top2": [
+     [
+      88,
+      -0.2892642915248871
+     ],
+     [
+      25,
+      -2.209662914276123
+     ]
+    ]
+   },
+   {
+    "step": 5,
+    "decode_token": 244,
+    "prefill_token": 244,
+    "prefill_top2": null
+   }
+  ]
+ },
+ {
+  "prompt_id": "q12-de-translate",
+  "prompt_tokens": 105,
+  "rows": [
+   {
+    "step": 0,
+    "decode_token": 135,
+    "prefill_token": 135,
+    "prefill_top2": [
+     [
+      135,
+      -5.9010340919485316e-05
+     ],
+     [
+      196,
+      -9.757909774780273
+     ]
+    ]
+   },
+   {
+    "step": 1,
+    "decode_token": 32,
+    "prefill_token": 32,
+    "prefill_top2": [
+     [
+      32,
+      -0.6881075501441956
+     ],
+     [
+      102,
+      -0.9076740145683289
+     ]
+    ]
+   },
+   {
+    "step": 2,
+    "decode_token": 19,
+    "prefill_token": 19,
+    "prefill_top2": [
+     [
+      19,
+      -0.0003333647327963263
+     ],
+     [
+      99,
+      -8.359800338745117
+     ]
+    ]
+   },
+   {
+    "step": 3,
+    "decode_token": 90,
+    "prefill_token": 90,
+    "prefill_top2": [
+     [
+      90,
+      -0.3303654193878174
+     ],
+     [
+      58,
+      -1.9308369159698486
+     ]
+    ]
+   },
+   {
+    "step": 4,
+    "decode_token": 202,
+    "prefill_token": 202,
+    "prefill_top2": null
+   },
+   {
+    "step": 5,
+    "decode_token": 234,
+    "prefill_token": 234,
+    "prefill_top2": null
+   }
+  ]
+ },
+ {
+  "prompt_id": "q13-es-short",
+  "prompt_tokens": 94,
+  "rows": [
+   {
+    "step": 0,
+    "decode_token": 135,
+    "prefill_token": 135,
+    "prefill_top2": [
+     [
+      135,
+      -2.6226387490169145e-05
+     ],
+     [
+      196,
+      -10.565841674804688
+     ]
+    ]
+   },
+   {
+    "step": 1,
+    "decode_token": 102,
+    "prefill_token": 102,
+    "prefill_top2": [
+     [
+      102,
+      -0.5789887309074402
+     ],
+     [
+      32,
+      -0.9010940194129944
+     ]
+    ]
+   },
+   {
+    "step": 2,
+    "decode_token": 199,
+    "prefill_token": 199,
+    "prefill_top2": null
+   },
+   {
+    "step": 3,
+    "decode_token": 204,
+    "prefill_token": 204,
+    "prefill_top2": null
+   },
+   {
+    "step": 4,
+    "decode_token": 88,
+    "prefill_token": 88,
+    "prefill_top2": [
+     [
+      88,
+      -0.14694777131080627
+     ],
+     [
+      25,
+      -2.8986358642578125
+     ]
+    ]
+   },
+   {
+    "step": 5,
+    "decode_token": 244,
+    "prefill_token": 244,
+    "prefill_top2": null
+   }
+  ]
+ },
+ {
+  "prompt_id": "q14-list-format",
+  "prompt_tokens": 116,
+  "rows": [
+   {
+    "step": 0,
+    "decode_token": 135,
+    "prefill_token": 135,
+    "prefill_top2": [
+     [
+      135,
+      -9.32260081754066e-05
+     ],
+     [
+      196,
+      -9.30449104309082
+     ]
+    ]
+   },
+   {
+    "step": 1,
+    "decode_token": 32,
+    "prefill_token": 32,
+    "prefill_top2": [
+     [
+      32,
+      -0.6463790535926819
+     ],
+     [
+      102,
+      -0.9357390999794006
+     ]
+    ]
+   },
+   {
+    "step": 2,
+    "decode_token": 19,
+    "prefill_token": 19,
+    "prefill_top2": [
+     [
+      19,
+      -0.00033372247708030045
+     ],
+     [
+      99,
+      -8.271141052246094
+     ]
+    ]
+   },
+   {
+    "step": 3,
+    "decode_token": 90,
+    "prefill_token": 90,
+    "prefill_top2": [
+     [
+      90,
+      -0.2979152798652649
+     ],
+     [
+      58,
+      -2.4272964000701904
+     ]
+    ]
+   },
+   {
+    "step": 4,
+    "decode_token": 202,
+    "prefill_token": 202,
+    "prefill_top2": null
+   },
+   {
+    "step": 5,
+    "decode_token": 234,
+    "prefill_token": 234,
+    "prefill_top2": null
+   }
+  ]
+ },
+ {
+  "prompt_id": "q15-json-format",
+  "prompt_tokens": 114,
+  "rows": [
+   {
+    "step": 0,
+    "decode_token": 135,
+    "prefill_token": 135,
+    "prefill_top2": [
+     [
+      135,
+      -3.3975225960602984e-05
+     ],
+     [
+      196,
+      -10.320869445800781
+     ]
+    ]
+   },
+   {
+    "step": 1,
+    "decode_token": 102,
+    "prefill_token": 102,
+    "prefill_top2": [
+     [
+      102,
+      -0.42805102467536926
+     ],
+     [
+      32,
+      -1.1989631652832031
+     ]
+    ]
+   },
+   {
+    "step": 2,
+    "decode_token": 199,
+    "prefill_token": 199,
+    "prefill_top2": null
+   },
+   {
+    "step": 3,
+    "decode_token": 204,
+    "prefill_token": 204,
+    "prefill_top2": null
+   },
+   {
+    "step": 4,
+    "decode_token": 88,
+    "prefill_token": 88,
+    "prefill_top2": [
+     [
+      88,
+      -0.2546308934688568
+     ],
+     [
+      25,
+      -2.2981908321380615
+     ]
+    ]
+   },
+   {
+    "step": 5,
+    "decode_token": 244,
+    "prefill_token": 244,
+    "prefill_top2": null
+   }
+  ]
+ },
+ {
+  "prompt_id": "q16-yes-no",
+  "prompt_tokens": 108,
+  "rows": [
+   {
+    "step": 0,
+    "decode_token": 135,
+    "prefill_token": 135,
+    "prefill_top2": [
+     [
+      135,
+      -5.1976599934278056e-05
+     ],
+     [
+      196,
+      -9.889212608337402
+     ]
+    ]
+   },
+   {
+    "step": 1,
+    "decode_token": 102,
+    "prefill_token": 102,
+    "prefill_top2": [
+     [
+      102,
+      -0.6516050696372986
+     ],
+     [
+      32,
+      -0.8871702551841736
+     ]
+    ]
+   },
+   {
+    "step": 2,
+    "decode_token": 199,
+    "prefill_token": 199,
+    "prefill_top2": null
+   },
+   {
+    "step": 3,
+    "decode_token": 204,
+    "prefill_token": 204,
+    "prefill_top2": null
+   },
+   {
+    "step": 4,
+    "decode_token": 88,
+    "prefill_token": 88,
+    "prefill_top2": [
+     [
+      88,
+      -0.3667072653770447
+     ],
+     [
+      25,
+      -2.12723970413208
+     ]
+    ]
+   },
+   {
+    "step": 5,
+    "decode_token": 244,
+    "prefill_token": 244,
+    "prefill_top2": null
+   }
+  ]
+ },
+ {
+  "prompt_id": "q17-logic",
+  "prompt_tokens": 131,
+  "rows": [
+   {
+    "step": 0,
+    "decode_token": 135,
+    "prefill_token": 135,
+    "prefill_top2": [
+     [
+      135,
+      -4.661191997001879e-05
+     ],
+     [
+      196,
+      -9.999146461486816
+     ]
+    ]
+   },
+   {
+    "step": 1,
+    "decode_token": 32,
+    "prefill_token": 32,
+    "prefill_top2": [
+     [
+      32,
+      -0.5885323286056519
+     ],
+     [
+      102,
+      -0.9248551726341248
+     ]
+    ]
+   },
+   {
+    "step": 2,
+    "decode_token": 19,
+    "prefill_token": 19,
+    "prefill_top2": [
+     [
+      19,
+      -0.00028441421454772353
+     ],
+     [
+      99,
+      -8.551355361938477
+     ]
+    ]
+   },
+   {
+    "step": 3,
+    "decode_token": 90,
+    "prefill_token": 90,
+    "prefill_top2": [
+     [
+      90,
+      -0.3366546332836151
+     ],
+     [
+      58,
+      -2.2168712615966797
+     ]
+    ]
+   },
+   {
+    "step": 4,
+    "decode_token": 202,
+    "prefill_token": 202,
+    "prefill_top2": null
+   },
+   {
+    "step": 5,
+    "decode_token": 234,
+    "prefill_token": 234,
+    "prefill_top2": null
+   }
+  ]
+ },
+ {
+  "prompt_id": "q18-sequence",
+  "prompt_tokens": 99,
+  "rows": [
+   {
+    "step": 0,
+    "decode_token": 135,
+    "prefill_token": 135,
+    "prefill_top2": [
+     [
+      135,
+      -6.509038939839229e-05
+     ],
+     [
+      196,
+      -9.671512603759766
+     ]
+    ]
+   },
+   {
+    "step": 1,
+    "decode_token": 102,
+    "prefill_token": 102,
+    "prefill_top2": [
+     [
+      102,
+      -0.6125168800354004
+     ],
+     [
+      32,
+      -1.0166726112365723
+     ]
+    ]
+   },
+   {
+    "step": 2,
+    "decode_token": 199,
+    "prefill_token": 199,
+    "prefill_top2": null
+   },
+   {
+    "step": 3,
+    "decode_token": 204,
+    "prefill_token": 204,
+    "prefill_top2": null
+   },
+   {
+    "step": 4,
+    "decode_token": 88,
+    "prefill_token": 88,
+    "prefill_top2": [
+     [
+      88,
+      -0.23287717998027802
+     ],
+     [
+      186,
+      -2.4599757194519043
+     ]
+    ]
+   },
+   {
+    "step": 5,
+    "decode_token": 244,
+    "prefill_token": 244,
+    "prefill_top2": null
+   }
+  ]
+ },
+ {
+  "prompt_id": "q19-summary-tech",
+  "prompt_tokens": 117,
+  "rows": [
+   {
+    "step": 0,
+    "decode_token": 135,
+    "prefill_token": 135,
+    "prefill_top2": [
+     [
+      135,
+      -0.00010812866821652278
+     ],
+     [
+      196,
+      -9.151597023010254
+     ]
+    ]
+   },
+   {
+    "step": 1,
+    "decode_token": 102,
+    "prefill_token": 102,
+    "prefill_top2": [
+     [
+      102,
+      -0.6878092885017395
+     ],
+     [
+      32,
+      -0.9065326452255249
+     ]
+    ]
+   },
+   {
+    "step": 2,
+    "decode_token": 199,
+    "prefill_token": 199,
+    "prefill_top2": null
+   },
+   {
+    "step": 3,
+    "decode_token": 204,
+    "prefill_token": 204,
+    "prefill_top2": null
+   },
+   {
+    "step": 4,
+    "decode_token": 88,
+    "prefill_token": 88,
+    "prefill_top2": [
+     [
+      88,
+      -0.2472974956035614
+     ],
+     [
+      25,
+      -2.2149412631988525
+     ]
+    ]
+   },
+   {
+    "step": 5,
+    "decode_token": 244,
+    "prefill_token": 244,
+    "prefill_top2": null
+   }
+  ]
+ },
+ {
+  "prompt_id": "q20-summary-memory",
+  "prompt_tokens": 115,
+  "rows": [
+   {
+    "step": 0,
+    "decode_token": 135,
+    "prefill_token": 135,
+    "prefill_top2": [
+     [
+      135,
+      -6.0440936067607254e-05
+     ],
+     [
+      196,
+      -9.74387264251709
+     ]
+    ]
+   },
+   {
+    "step": 1,
+    "decode_token": 32,
+    "prefill_token": 32,
+    "prefill_top2": [
+     [
+      32,
+      -0.6881086230278015
+     ],
+     [
+      102,
+      -1.160616159439087
+     ]
+    ]
+   },
+   {
+    "step": 2,
+    "decode_token": 19,
+    "prefill_token": 19,
+    "prefill_top2": [
+     [
+      19,
+      -0.0003076072607655078
+     ],
+     [
+      99,
+      -8.345717430114746
+     ]
+    ]
+   },
+   {
+    "step": 3,
+    "decode_token": 90,
+    "prefill_token": 90,
+    "prefill_top2": [
+     [
+      90,
+      -0.37908050417900085
+     ],
+     [
+      58,
+      -2.171501874923706
+     ]
+    ]
+   },
+   {
+    "step": 4,
+    "decode_token": 202,
+    "prefill_token": 202,
+    "prefill_top2": null
+   },
+   {
+    "step": 5,
+    "decode_token": 234,
+    "prefill_token": 234,
+    "prefill_top2": null
+   }
+  ]
+ },
+ {
+  "prompt_id": "q21-compare",
+  "prompt_tokens": 80,
+  "rows": [
+   {
+    "step": 0,
+    "decode_token": 135,
+    "prefill_token": 135,
+    "prefill_top2": [
+     [
+      135,
+      -8.142326259985566e-05
+     ],
+     [
+      196,
+      -9.440693855285645
+     ]
+    ]
+   },
+   {
+    "step": 1,
+    "decode_token": 102,
+    "prefill_token": 102,
+    "prefill_top2": [
+     [
+      102,
+      -0.7143877744674683
+     ],
+     [
+      32,
+      -0.7915247678756714
+     ]
+    ]
+   },
+   {
+    "step": 2,
+    "decode_token": 199,
+    "prefill_token": 199,
+    "prefill_top2": null
+   },
+   {
+    "step": 3,
+    "decode_token": 204,
+    "prefill_token": 204,
+    "prefill_top2": null
+   },
+   {
+    "step": 4,
+    "decode_token": 88,
+    "prefill_token": 88,
+    "prefill_top2": [
+     [
+      88,
+      -0.34024348855018616
+     ],
+     [
+      25,
+      -2.061774492263794
+     ]
+    ]
+   },
+   {
+    "step": 5,
+    "decode_token": 244,
+    "prefill_token": 244,
+    "prefill_top2": null
+   }
+  ]
+ },
+ {
+  "prompt_id": "q22-definition",
+  "prompt_tokens": 113,
+  "rows": [
+   {
+    "step": 0,
+    "decode_token": 135,
+    "prefill_token": 135,
+    "prefill_top2": [
+     [
+      135,
+      -1.7047073924914002e-05
+     ],
+     [
+      196,
+      -11.014978408813477
+     ]
+    ]
+   },
+   {
+    "step": 1,
+    "decode_token": 32,
+    "prefill_token": 32,
+    "prefill_top2": [
+     [
+      32,
+      -0.7580244541168213
+     ],
+     [
+      102,
+      -0.8087599277496338
+     ]
+    ]
+   },
+   {
+    "step": 2,
+    "decode_token": 19,
+    "prefill_token": 19,
+    "prefill_top2": [
+     [
+      19,
+      -0.00039603206096217036
+     ],
+     [
+      99,
+      -8.146254539489746
+     ]
+    ]
+   },
+   {
+    "step": 3,
+    "decode_token": 90,
+    "prefill_token": 90,
+    "prefill_top2": [
+     [
+      90,
+      -0.2562122344970703
+     ],
+     [
+      58,
+      -2.2893600463867188
+     ]
+    ]
+   },
+   {
+    "step": 4,
+    "decode_token": 202,
+    "prefill_token": 202,
+    "prefill_top2": null
+   },
+   {
+    "step": 5,
+    "decode_token": 26,
+    "prefill_token": 26,
+    "prefill_top2": [
+     [
+      26,
+      -0.5468020439147949
+     ],
+     [
+      234,
+      -0.8807901740074158
+     ]
+    ]
+   }
+  ]
+ },
+ {
+  "prompt_id": "q23-steps",
+  "prompt_tokens": 132,
+  "rows": [
+   {
+    "step": 0,
+    "decode_token": 135,
+    "prefill_token": 135,
+    "prefill_top2": [
+     [
+      135,
+      -3.898219802067615e-05
+     ],
+     [
+      196,
+      -10.179394721984863
+     ]
+    ]
+   },
+   {
+    "step": 1,
+    "decode_token": 32,
+    "prefill_token": 32,
+    "prefill_top2": [
+     [
+      32,
+      -0.7085953950881958
+     ],
+     [
+      102,
+      -0.8026277422904968
+     ]
+    ]
+   },
+   {
+    "step": 2,
+    "decode_token": 19,
+    "prefill_token": 19,
+    "prefill_top2": [
+     [
+      19,
+      -0.000356499309418723
+     ],
+     [
+      99,
+      -8.27161979675293
+     ]
+    ]
+   },
+   {
+    "step": 3,
+    "decode_token": 90,
+    "prefill_token": 90,
+    "prefill_top2": [
+     [
+      90,
+      -0.2963207960128784
+     ],
+     [
+      58,
+      -2.2546606063842773
+     ]
+    ]
+   },
+   {
+    "step": 4,
+    "decode_token": 202,
+    "prefill_token": 202,
+    "prefill_top2": null
+   },
+   {
+    "step": 5,
+    "decode_token": 26,
+    "prefill_token": 26,
+    "prefill_top2": [
+     [
+      26,
+      -0.6683502793312073
+     ],
+     [
+      234,
+      -0.734403669834137
+     ]
+    ]
+   }
+  ]
+ },
+ {
+  "prompt_id": "q24-math-algebra",
+  "prompt_tokens": 64,
+  "rows": [
+   {
+    "step": 0,
+    "decode_token": 135,
+    "prefill_token": 135,
+    "prefill_top2": [
+     [
+      135,
+      -3.0637256713816896e-05
+     ],
+     [
+      196,
+      -10.420791625976562
+     ]
+    ]
+   },
+   {
+    "step": 1,
+    "decode_token": 32,
+    "prefill_token": 32,
+    "prefill_top2": [
+     [
+      32,
+      -0.7777564525604248
+     ],
+     [
+      102,
+      -0.8800705075263977
+     ]
+    ]
+   },
+   {
+    "step": 2,
+    "decode_token": 19,
+    "prefill_token": 19,
+    "prefill_top2": [
+     [
+      19,
+      -0.0004154710622970015
+     ],
+     [
+      99,
+      -8.046209335327148
+     ]
+    ]
+   },
+   {
+    "step": 3,
+    "decode_token": 90,
+    "prefill_token": 90,
+    "prefill_top2": [
+     [
+      90,
+      -0.3202621340751648
+     ],
+     [
+      58,
+      -2.3403160572052
+     ]
+    ]
+   },
+   {
+    "step": 4,
+    "decode_token": 202,
+    "prefill_token": 202,
+    "prefill_top2": null
+   },
+   {
+    "step": 5,
+    "decode_token": 234,
+    "prefill_token": 234,
+    "prefill_top2": null
+   }
+  ]
+ },
+ {
+  "prompt_id": "q25-math-prob",
+  "prompt_tokens": 122,
+  "rows": [
+   {
+    "step": 0,
+    "decode_token": 135,
+    "prefill_token": 135,
+    "prefill_top2": [
+     [
+      135,
+      -7.021673809504136e-05
+     ],
+     [
+      196,
+      -9.582098007202148
+     ]
+    ]
+   },
+   {
+    "step": 1,
+    "decode_token": 102,
+    "prefill_token": 102,
+    "prefill_top2": [
+     [
+      102,
+      -0.5980251431465149
+     ],
+     [
+      32,
+      -0.8971394300460815
+     ]
+    ]
+   },
+   {
+    "step": 2,
+    "decode_token": 199,
+    "prefill_token": 199,
+    "prefill_top2": null
+   },
+   {
+    "step": 3,
+    "decode_token": 204,
+    "prefill_token": 204,
+    "prefill_top2": null
+   },
+   {
+    "step": 4,
+    "decode_token": 88,
+    "prefill_token": 88,
+    "prefill_top2": [
+     [
+      88,
+      -0.3902204930782318
+     ],
+     [
+      25,
+      -1.8284738063812256
+     ]
+    ]
+   },
+   {
+    "step": 5,
+    "decode_token": 244,
+    "prefill_token": 244,
+    "prefill_top2": null
+   }
+  ]
+ },
+ {
+  "prompt_id": "q26-history",
+  "prompt_tokens": 110,
+  "rows": [
+   {
+    "step": 0,
+    "decode_token": 135,
+    "prefill_token": 135,
+    "prefill_top2": [
+     [
+      135,
+      -9.596808376954868e-05
+     ],
+     [
+      196,
+      -9.272953987121582
+     ]
+    ]
+   },
+   {
+    "step": 1,
+    "decode_token": 32,
+    "prefill_token": 32,
+    "prefill_top2": [
+     [
+      32,
+      -0.7884200215339661
+     ],
+     [
+      102,
+      -0.875112771987915
+     ]
+    ]
+   },
+   {
+    "step": 2,
+    "decode_token": 19,
+    "prefill_token": 19,
+    "prefill_top2": [
+     [
+      19,
+      -0.00037665307172574103
+     ],
+     [
+      99,
+      -8.210761070251465
+     ]
+    ]
+   },
+   {
+    "step": 3,
+    "decode_token": 90,
+    "prefill_token": 90,
+    "prefill_top2": [
+     [
+      90,
+      -0.34486904740333557
+     ],
+     [
+      58,
+      -2.1226744651794434
+     ]
+    ]
+   },
+   {
+    "step": 4,
+    "decode_token": 160,
+    "prefill_token": 160,
+    "prefill_top2": [
+     [
+      160,
+      -0.5613897442817688
+     ],
+     [
+      202,
+      -0.9350621700286865
+     ]
+    ]
+   },
+   {
+    "step": 5,
+    "decode_token": 13,
+    "prefill_token": 13,
+    "prefill_top2": [
+     [
+      13,
+      -0.8468977212905884
+     ],
+     [
+      222,
+      -1.0599294900894165
+     ]
+    ]
+   }
+  ]
+ },
+ {
+  "prompt_id": "q27-science",
+  "prompt_tokens": 74,
+  "rows": [
+   {
+    "step": 0,
+    "decode_token": 135,
+    "prefill_token": 135,
+    "prefill_top2": [
+     [
+      135,
+      -3.588264007703401e-05
+     ],
+     [
+      196,
+      -10.259496688842773
+     ]
+    ]
+   },
+   {
+    "step": 1,
+    "decode_token": 102,
+    "prefill_token": 102,
+    "prefill_top2": [
+     [
+      102,
+      -0.6670308113098145
+     ],
+     [
+      32,
+      -0.816765308380127
+     ]
+    ]
+   },
+   {
+    "step": 2,
+    "decode_token": 199,
+    "prefill_token": 199,
+    "prefill_top2": null
+   },
+   {
+    "step": 3,
+    "decode_token": 204,
+    "prefill_token": 204,
+    "prefill_top2": null
+   },
+   {
+    "step": 4,
+    "decode_token": 88,
+    "prefill_token": 88,
+    "prefill_top2": [
+     [
+      88,
+      -0.10997030884027481
+     ],
+     [
+      186,
+      -3.370554208755493
+     ]
+    ]
+   },
+   {
+    "step": 5,
+    "decode_token": 244,
+    "prefill_token": 244,
+    "prefill_top2": null
+   }
+  ]
+ },
+ {
+  "prompt_id": "q28-rewrite",
+  "prompt_tokens": 126,
+  "rows": [
+   {
+    "step": 0,
+    "decode_token": 135,
+    "prefill_token": 135,
+    "prefill_top2": [
+     [
+      135,
+      -5.3884050430497155e-05
+     ],
+     [
+      196,
+      -9.860886573791504
+     ]
+    ]
+   },
+   {
+    "step": 1,
+    "decode_token": 102,
+    "prefill_token": 102,
+    "prefill_top2": [
+     [
+      102,
+      -0.7714295983314514
+     ],
+     [
+      32,
+      -0.9148317575454712
+     ]
+    ]
+   },
+   {
+    "step": 2,
+    "decode_token": 199,
+    "prefill_token": 199,
+    "prefill_top2": null
+   },
+   {
+    "step": 3,
+    "decode_token": 204,
+    "prefill_token": 204,
+    "prefill_top2": null
+   },
+   {
+    "step": 4,
+    "decode_token": 88,
+    "prefill_token": 88,
+    "prefill_top2": [
+     [
+      88,
+      -0.26914849877357483
+     ],
+     [
+      25,
+      -2.292269229888916
+     ]
+    ]
+   },
+   {
+    "step": 5,
+    "decode_token": 244,
+    "prefill_token": 244,
+    "prefill_top2": null
+   }
+  ]
+ },
+ {
+  "prompt_id": "q29-code-explain",
+  "prompt_tokens": 118,
+  "rows": [
+   {
+    "step": 0,
+    "decode_token": 135,
+    "prefill_token": 135,
+    "prefill_top2": [
+     [
+      135,
+      -7.37932714400813e-05
+     ],
+     [
+      196,
+      -9.535271644592285
+     ]
+    ]
+   },
+   {
+    "step": 1,
+    "decode_token": 32,
+    "prefill_token": 32,
+    "prefill_top2": [
+     [
+      32,
+      -0.6333496570587158
+     ],
+     [
+      102,
+      -0.9484132528305054
+     ]
+    ]
+   },
+   {
+    "step": 2,
+    "decode_token": 19,
+    "prefill_token": 19,
+    "prefill_top2": [
+     [
+      19,
+      -0.00037462575710378587
+     ],
+     [
+      99,
+      -8.331101417541504
+     ]
+    ]
+   },
+   {
+    "step": 3,
+    "decode_token": 90,
+    "prefill_token": 90,
+    "prefill_top2": [
+     [
+      90,
+      -0.28672996163368225
+     ],
+     [
+      58,
+      -2.3516104221343994
+     ]
+    ]
+   },
+   {
+    "step": 4,
+    "decode_token": 202,
+    "prefill_token": 202,
+    "prefill_top2": null
+   },
+   {
+    "step": 5,
+    "decode_token": 26,
+    "prefill_token": 26,
+    "prefill_top2": [
+     [
+      26,
+      -0.5199477076530457
+     ],
+     [
+      234,
+      -0.9149977564811707
+     ]
+    ]
+   }
+  ]
+ },
+ {
+  "prompt_id": "q30-constraint",
+  "prompt_tokens": 102,
+  "rows": [
+   {
+    "step": 0,
+    "decode_token": 135,
+    "prefill_token": 135,
+    "prefill_top2": [
+     [
+      135,
+      -5.948720354354009e-05
+     ],
+     [
+      196,
+      -9.756750106811523
+     ]
+    ]
+   },
+   {
+    "step": 1,
+    "decode_token": 102,
+    "prefill_token": 102,
+    "prefill_top2": [
+     [
+      102,
+      -0.6998549699783325
+     ],
+     [
+      32,
+      -0.8065329790115356
+     ]
+    ]
+   },
+   {
+    "step": 2,
+    "decode_token": 199,
+    "prefill_token": 199,
+    "prefill_top2": null
+   },
+   {
+    "step": 3,
+    "decode_token": 204,
+    "prefill_token": 204,
+    "prefill_top2": null
+   },
+   {
+    "step": 4,
+    "decode_token": 88,
+    "prefill_token": 88,
+    "prefill_top2": [
+     [
+      88,
+      -0.3269246816635132
+     ],
+     [
+      25,
+      -2.127847194671631
+     ]
+    ]
+   },
+   {
+    "step": 5,
+    "decode_token": 244,
+    "prefill_token": 244,
+    "prefill_top2": null
+   }
+  ]
+ },
+ {
+  "prompt_id": "q31-long-instruction",
+  "prompt_tokens": 332,
+  "rows": [
+   {
+    "step": 0,
+    "decode_token": 135,
+    "prefill_token": 135,
+    "prefill_top2": [
+     [
+      135,
+      -3.6240282497601584e-05
+     ],
+     [
+      196,
+      -10.256471633911133
+     ]
+    ]
+   },
+   {
+    "step": 1,
+    "decode_token": 102,
+    "prefill_token": 102,
+    "prefill_top2": [
+     [
+      102,
+      -0.43945199251174927
+     ],
+     [
+      32,
+      -1.244303584098816
+     ]
+    ]
+   },
+   {
+    "step": 2,
+    "decode_token": 199,
+    "prefill_token": 199,
+    "prefill_top2": null
+   },
+   {
+    "step": 3,
+    "decode_token": 204,
+    "prefill_token": 204,
+    "prefill_top2": null
+   },
+   {
+    "step": 4,
+    "decode_token": 88,
+    "prefill_token": 88,
+    "prefill_top2": [
+     [
+      88,
+      -0.15093564987182617
+     ],
+     [
+      25,
+      -3.0282034873962402
+     ]
+    ]
+   },
+   {
+    "step": 5,
+    "decode_token": 244,
+    "prefill_token": 244,
+    "prefill_top2": null
+   }
+  ]
+ },
+ {
+  "prompt_id": "q32-refusal-boundary",
+  "prompt_tokens": 102,
+  "rows": [
+   {
+    "step": 0,
+    "decode_token": 135,
+    "prefill_token": 135,
+    "prefill_top2": [
+     [
+      135,
+      -6.664021202595904e-05
+     ],
+     [
+      196,
+      -9.636068344116211
+     ]
+    ]
+   },
+   {
+    "step": 1,
+    "decode_token": 32,
+    "prefill_token": 32,
+    "prefill_top2": [
+     [
+      32,
+      -0.4740847945213318
+     ],
+     [
+      102,
+      -1.1142977476119995
+     ]
+    ]
+   },
+   {
+    "step": 2,
+    "decode_token": 19,
+    "prefill_token": 19,
+    "prefill_top2": [
+     [
+      19,
+      -0.0003392079670447856
+     ],
+     [
+      99,
+      -8.331052780151367
+     ]
+    ]
+   },
+   {
+    "step": 3,
+    "decode_token": 90,
+    "prefill_token": 90,
+    "prefill_top2": [
+     [
+      90,
+      -0.3233238458633423
+     ],
+     [
+      58,
+      -2.246943950653076
+     ]
+    ]
+   },
+   {
+    "step": 4,
+    "decode_token": 202,
+    "prefill_token": 202,
+    "prefill_top2": null
+   },
+   {
+    "step": 5,
+    "decode_token": 26,
+    "prefill_token": 26,
+    "prefill_top2": [
+     [
+      26,
+      -0.49678167700767517
+     ],
+     [
+      234,
+      -0.9498952031135559
+     ]
+    ]
+   }
+  ]
+ }
+]
