@@ -18,9 +18,10 @@ to the inventory). `git apply --check` against that tree passes.
 | `0003-mistralrs-strata-expert-demand-profile-q027.patch` | `43db8ef6...7a0532` | On top of `0002`: `GNOSTRAL_EXPERT_PROFILE_OUT=path` records routed demand per expert and writes a profile in the exact schema `GNOSTRAL_EXPERT_PROFILE` loads (ranked by observed routes) plus `path.demand.json` with the counts; written atomically every 256 layer forwards and on drain |
 | `0004-mistralrs-strata-gnostral-kernel-candle-compat-q029.patch` | `c9d96463...dc773f` | On top of `0003`: the `gnostral` lane calls `grouped_expert_ffn` with `Numerics::CandleCompat`, so it is bit-equal to the `candle` lane; the residency test asserts bit equality |
 | `0005-mistralrs-strata-capture-topn-logprobs-only-no-prefix-cache.patch` | see file | On top of `0004`: `gnostral_capture` gains `--topn N --logprobs-out PATH` (top-N logprobs per step), `--no-prefix-cache` and `--only ID,ID` (reproducibility diagnostics) |
+| `0006-mistralrs-strata-residency-aware-device-map-q027.patch` | `c4b8c867...c617b4` | On top of `0005`: under expert residency the GGUF device mapper sizes Qwen3 MoE layers without their expert stacks (they load host-side) and reserves the cache budget once; before, only 15-16 of 48 layers were mapped to an 8 GiB card and the count followed free VRAM at load, which made captures non-reproducible. Test on a synthetic GGUF |
 | `candle-strata-public-reconstruction.BUILD-ONLY.patch` | `f9549036...98e7b` | **Not for the lab.** Lets the public candle `35d7ae7` stand in for the unpublished lab candle-strata (`f0f334aa`): reconstructed `expert_slice_to`, the Q-010 `cpu_expert_matmul_k`, `cuda_allocation_bytes`, and load-refusing Bonsai PQ2_0/PTQ1_0 stubs |
 
-The lab tree already carries the real candle-strata; apply `0001` to `0004` in order there, not the BUILD-ONLY patch.
+The lab tree already carries the real candle-strata; apply `0001` to `0006` in order there, not the BUILD-ONLY patch.
 
 ## Runtime selection (same binary, A/B by environment)
 

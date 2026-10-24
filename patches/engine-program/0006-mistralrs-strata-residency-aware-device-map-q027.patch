@@ -1,0 +1,218 @@
+From 6707738ce5e134477a0f9480f53e5225d5cb08f2 Mon Sep 17 00:00:00 2001
+From: Jordan <dev.in@gnu6.live>
+Date: Sat, 24 Oct 2026 14:22:05 +0000
+Subject: [PATCH] fix(device-map): size Qwen3 MoE layers without expert stacks
+ under residency
+
+Under expert residency the expert stacks load host-side, but the GGUF device
+mapper counted them in every layer, so only 15-16 of 48 layers fitted on an
+8 GiB card and the count depended on free VRAM at load time. Mapped layers now
+exclude the stacks and the cache budget is reserved once in the non-mapped size.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_016D4Xz7aLLGu873oZNF6vk4
+---
+ mistralrs-core/src/moe/experts/residency.rs |  12 ++
+ mistralrs-core/src/moe/mod.rs               |   3 +-
+ mistralrs-core/src/utils/gguf_metadata.rs   | 118 +++++++++++++++++++-
+ 3 files changed, 128 insertions(+), 5 deletions(-)
+
+diff --git a/mistralrs-core/src/moe/experts/residency.rs b/mistralrs-core/src/moe/experts/residency.rs
+index 1d4b6b2..0891ecd 100644
+--- a/mistralrs-core/src/moe/experts/residency.rs
++++ b/mistralrs-core/src/moe/experts/residency.rs
+@@ -905,6 +905,18 @@ impl Drop for ExpertResidencyRuntime {
+     }
+ }
+ 
++/// Bytes of the expert cache requested through the environment, without reading the profile.
++///
++/// `Some` whenever residency would be active: expert stacks then load host-side and only this many
++/// bytes of experts live on the device, so device mapping must not count the stacks per layer.
++pub(crate) fn requested_cache_bytes() -> Option<u64> {
++    let budget = std::env::var("GNOSTRAL_EXPERT_CACHE_BYTES").ok()?;
++    if budget.is_empty() || !budget.bytes().all(|b| b.is_ascii_digit()) {
++        return None;
++    }
++    budget.parse::<u64>().ok().filter(|&b| b > 0)
++}
++
+ pub(crate) struct ExpertResidencyRequest {
+     budget: String,
+     profile: String,
+diff --git a/mistralrs-core/src/moe/mod.rs b/mistralrs-core/src/moe/mod.rs
+index b611fb7..55e5c9d 100644
+--- a/mistralrs-core/src/moe/mod.rs
++++ b/mistralrs-core/src/moe/mod.rs
+@@ -15,5 +15,6 @@ pub fn shard(dim: usize, rank: usize, world_size: usize) -> Shard {
+ 
+ #[cfg(feature = "gnostral-expert-residency")]
+ pub(crate) use experts::residency::{
+-    ExpertResidencyRequest, ExpertResidencyRuntime, CPU_RESIDENCY_ENV, PROFILE_OUT_ENV,
++    requested_cache_bytes, ExpertResidencyRequest, ExpertResidencyRuntime, CPU_RESIDENCY_ENV,
++    PROFILE_OUT_ENV,
+ };
+diff --git a/mistralrs-core/src/utils/gguf_metadata.rs b/mistralrs-core/src/utils/gguf_metadata.rs
+index 6d26e2d..8446279 100644
+--- a/mistralrs-core/src/utils/gguf_metadata.rs
++++ b/mistralrs-core/src/utils/gguf_metadata.rs
+@@ -247,6 +247,18 @@ pub struct GgufDeviceMapLoaderInner<'a, 'f> {
+     pub arch: GGUFArchitecture,
+ }
+ 
++impl GgufDeviceMapLoaderInner<'_, '_> {
++    /// Expert cache bytes when Qwen3 MoE expert residency is requested, else 0.
++    fn residency_cache_bytes(&self) -> usize {
++        #[cfg(feature = "gnostral-expert-residency")]
++        if let GGUFArchitecture::Qwen3MoE = self.arch {
++            return crate::moe::requested_cache_bytes()
++                .map_or(0, |b| usize::try_from(b).unwrap_or(usize::MAX));
++        }
++        0
++    }
++}
++
+ impl DeviceMappedModelLoader for GgufDeviceMapLoaderInner<'_, '_> {
+     fn mapped_max_act_size_elems(
+         &self,
+@@ -344,7 +356,7 @@ impl DeviceMappedModelLoader for GgufDeviceMapLoaderInner<'_, '_> {
+                 } else {
+                     tensor_info_size_in_bytes!(self.model.tensor_info("output.weight")?)
+                 };
+-                token_embd + output_norm + output
++                token_embd + output_norm + output + self.residency_cache_bytes()
+             }
+             GGUFArchitecture::Starcoder2 => {
+                 let token_embd = tensor_info_size_in_bytes!(
+@@ -529,7 +541,12 @@ impl DeviceMappedModelLoader for GgufDeviceMapLoaderInner<'_, '_> {
+                     .model
+                     .tensor_info("blk.0.attn_output.weight")?);
+ 
+-                let ffn_gate = if let GGUFArchitecture::Qwen3MoE = self.arch {
++                // Under expert residency the stacks load host-side; only the cache budget (counted
++                // once in the non-mapped size) lives on the device.
++                let residency = self.residency_cache_bytes() > 0;
++                let ffn_gate = if residency {
++                    0
++                } else if let GGUFArchitecture::Qwen3MoE = self.arch {
+                     tensor_info_size_in_bytes!(self
+                         .model
+                         .tensor_info("blk.0.ffn_gate_exps.weight")?)
+@@ -537,7 +554,9 @@ impl DeviceMappedModelLoader for GgufDeviceMapLoaderInner<'_, '_> {
+                     tensor_info_size_in_bytes!(self.model.tensor_info("blk.0.ffn_gate.weight")?)
+                 };
+ 
+-                let ffn_up = if let GGUFArchitecture::Qwen3MoE = self.arch {
++                let ffn_up = if residency {
++                    0
++                } else if let GGUFArchitecture::Qwen3MoE = self.arch {
+                     tensor_info_size_in_bytes!(self
+                         .model
+                         .tensor_info("blk.0.ffn_up_exps.weight")?)
+@@ -545,7 +564,9 @@ impl DeviceMappedModelLoader for GgufDeviceMapLoaderInner<'_, '_> {
+                     tensor_info_size_in_bytes!(self.model.tensor_info("blk.0.ffn_up.weight")?)
+                 };
+ 
+-                let ffn_down = if let GGUFArchitecture::Qwen3MoE = self.arch {
++                let ffn_down = if residency {
++                    0
++                } else if let GGUFArchitecture::Qwen3MoE = self.arch {
+                     tensor_info_size_in_bytes!(self
+                         .model
+                         .tensor_info("blk.0.ffn_down_exps.weight")?)
+@@ -655,3 +676,92 @@ impl DeviceMappedModelLoader for GgufDeviceMapLoaderInner<'_, '_> {
+         Ok(Box::new(model_config_metadata))
+     }
+ }
++
++#[cfg(all(test, feature = "gnostral-expert-residency"))]
++mod residency_sizing_tests {
++    use super::*;
++
++    const CACHE_ENV: &str = "GNOSTRAL_EXPERT_CACHE_BYTES";
++
++    // Generated by the repository's synthetic Qwen3-MoE writer; skipped only where the generator is absent.
++    fn synthetic_gguf(dir: &std::path::Path) -> Option<std::path::PathBuf> {
++        let maker = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
++            .join("../../../harness/synthetic-moe/make_qwen3moe_gguf.py");
++        if !maker.exists() {
++            return None;
++        }
++        let out = dir.join("synth.gguf");
++        let ok = std::process::Command::new("python3")
++            .arg("-I")
++            .arg(&maker)
++            .args([
++                "--out",
++                out.to_str()?,
++                "--layers",
++                "2",
++                "--experts",
++                "4",
++                "--top-k",
++                "2",
++            ])
++            .output()
++            .ok()?
++            .status
++            .success();
++        ok.then_some(out)
++    }
++
++    #[test]
++    fn residency_moves_expert_stacks_out_of_mapped_layers() -> Result<()> {
++        let dir = std::env::temp_dir().join(format!("gnostral-sizing-{}", std::process::id()));
++        fs::create_dir_all(&dir)?;
++        let Some(path) = synthetic_gguf(&dir) else {
++            eprintln!("synthetic GGUF generator not found; sizing test skipped");
++            return Ok(());
++        };
++        let mut file = fs::File::open(&path)?;
++        let mut readers = [&mut file];
++        let content = Content::from_readers(&mut readers)?;
++        let loader = GgufDeviceMapLoaderInner {
++            model: &content,
++            arch: GGUFArchitecture::Qwen3MoE,
++        };
++        let sizes = |l: &GgufDeviceMapLoaderInner<'_, '_>| -> Result<(Vec<usize>, usize)> {
++            Ok((
++                l.layer_sizes_in_bytes("", DType::F32, 1, None)?,
++                l.non_mapped_size_in_bytes("", DType::F32, 1, None, None)?,
++            ))
++        };
++        // SAFETY of env mutation: no other test in this crate reads this variable.
++        std::env::remove_var(CACHE_ENV);
++        let (dense_layers, dense_rest) = sizes(&loader)?;
++        std::env::set_var(CACHE_ENV, "4096");
++        let resident = sizes(&loader);
++        std::env::remove_var(CACHE_ENV);
++        let (res_layers, res_rest) = resident?;
++
++        let stacks: usize = ["gate", "up", "down"]
++            .iter()
++            .map(|p| {
++                content
++                    .tensor_info(&format!("blk.0.ffn_{p}_exps.weight"))
++                    .map(|t| tensor_info_size_in_bytes!(t))
++            })
++            .sum::<candle_core::Result<usize>>()?;
++        assert!(stacks > 0);
++        for (d, r) in dense_layers.iter().zip(&res_layers) {
++            assert_eq!(
++                d - r,
++                stacks,
++                "every mapped layer drops exactly its expert stacks"
++            );
++        }
++        assert_eq!(
++            res_rest,
++            dense_rest + 4096,
++            "the cache budget is reserved once"
++        );
++        fs::remove_dir_all(&dir).ok();
++        Ok(())
++    }
++}
+-- 
+2.43.0
+
