@@ -1,0 +1,108 @@
+{
+  "schema": "gnostral.rs/engine-benchmark-plan/v1",
+  "run_id": "synthetic-moe-e2e",
+  "date": "2026-10-23",
+  "protocol": {
+    "id": "synthetic-moe-cuda-smoke",
+    "sha256": "e68146064c3c93dc1c76154ba69b149cdb0fc23e415dee1bb03fcad321eb629f",
+    "repetitions": 3,
+    "context_tokens": 4096,
+    "prompt_sha256": "c573a8d81684b4ce7630bf585e95860600f5d1ec7cbb469c9de0e7604cd1787e",
+    "threads": 20,
+    "sampling": {
+      "temperature": 0,
+      "seed": 0,
+      "n_predict": 32,
+      "repeat_penalty": 1
+    }
+  },
+  "warmup_runs": 1,
+  "driver_probe": [
+    "/bin/sh",
+    "-c",
+    "if journalctl -k -b --no-pager 2>/dev/null | grep -q 'NVRM: Xid'; then echo GNOSTRAL_DRIVER XID; else echo GNOSTRAL_DRIVER NO_XID; fi"
+  ],
+  "lanes": [
+    {
+      "engine": "per-route",
+      "binary_path": "~/Projects/gnostral.rs/.ci-cache/mistralrs-target/release/examples/gnostral_capture",
+      "expected_binary_sha256": "8474e5e1dd3a6b0ca23cf4534172bbae9f8de4986e40dc534692e30c023fa9d6",
+      "model_path": "~/Projects/gnostral.rs/evidence/runs/synthetic-moe-gpu-20261023/synth.gguf",
+      "expected_model_sha256": "581b732551a448531fef8f772dca2592fadf60bbb82f60cdbb75b9a9369b5c6a",
+      "host_fingerprint": "cuda:x86_64:20",
+      "argv": [
+        "/usr/bin/python3",
+        "-I",
+        "~/Projects/gnostral.rs/harness/synthetic-moe/run_e2e.py",
+        "--lane",
+        "per-route",
+        "--capture-bin",
+        "~/Projects/gnostral.rs/.ci-cache/mistralrs-target/release/examples/gnostral_capture",
+        "--bench-bin",
+        "~/Projects/gnostral.rs/.ci-cache/mistralrs-target/release/gnostral-bench",
+        "--out",
+        "~/Projects/gnostral.rs/evidence/runs/synthetic-moe-gpu-20261023",
+        "--manifest",
+        "~/Projects/gnostral.rs/harness/quality/prompts/quality-prompts-32-20261023.json",
+        "--max-tokens",
+        "32",
+        "--device",
+        "cuda"
+      ]
+    },
+    {
+      "engine": "grouped",
+      "binary_path": "~/Projects/gnostral.rs/.ci-cache/mistralrs-target/release/examples/gnostral_capture",
+      "expected_binary_sha256": "8474e5e1dd3a6b0ca23cf4534172bbae9f8de4986e40dc534692e30c023fa9d6",
+      "model_path": "~/Projects/gnostral.rs/evidence/runs/synthetic-moe-gpu-20261023/synth.gguf",
+      "expected_model_sha256": "581b732551a448531fef8f772dca2592fadf60bbb82f60cdbb75b9a9369b5c6a",
+      "host_fingerprint": "cuda:x86_64:20",
+      "argv": [
+        "/usr/bin/python3",
+        "-I",
+        "~/Projects/gnostral.rs/harness/synthetic-moe/run_e2e.py",
+        "--lane",
+        "grouped",
+        "--capture-bin",
+        "~/Projects/gnostral.rs/.ci-cache/mistralrs-target/release/examples/gnostral_capture",
+        "--bench-bin",
+        "~/Projects/gnostral.rs/.ci-cache/mistralrs-target/release/gnostral-bench",
+        "--out",
+        "~/Projects/gnostral.rs/evidence/runs/synthetic-moe-gpu-20261023",
+        "--manifest",
+        "~/Projects/gnostral.rs/harness/quality/prompts/quality-prompts-32-20261023.json",
+        "--max-tokens",
+        "32",
+        "--device",
+        "cuda"
+      ]
+    },
+    {
+      "engine": "gnostral",
+      "binary_path": "~/Projects/gnostral.rs/.ci-cache/mistralrs-target/release/examples/gnostral_capture",
+      "expected_binary_sha256": "8474e5e1dd3a6b0ca23cf4534172bbae9f8de4986e40dc534692e30c023fa9d6",
+      "model_path": "~/Projects/gnostral.rs/evidence/runs/synthetic-moe-gpu-20261023/synth.gguf",
+      "expected_model_sha256": "581b732551a448531fef8f772dca2592fadf60bbb82f60cdbb75b9a9369b5c6a",
+      "host_fingerprint": "cuda:x86_64:20",
+      "argv": [
+        "/usr/bin/python3",
+        "-I",
+        "~/Projects/gnostral.rs/harness/synthetic-moe/run_e2e.py",
+        "--lane",
+        "gnostral",
+        "--capture-bin",
+        "~/Projects/gnostral.rs/.ci-cache/mistralrs-target/release/examples/gnostral_capture",
+        "--bench-bin",
+        "~/Projects/gnostral.rs/.ci-cache/mistralrs-target/release/gnostral-bench",
+        "--out",
+        "~/Projects/gnostral.rs/evidence/runs/synthetic-moe-gpu-20261023",
+        "--manifest",
+        "~/Projects/gnostral.rs/harness/quality/prompts/quality-prompts-32-20261023.json",
+        "--max-tokens",
+        "32",
+        "--device",
+        "cuda"
+      ]
+    }
+  ]
+}

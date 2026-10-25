@@ -1,0 +1,61 @@
+{
+ "schema": "gnostral.binary-ab/1",
+ "lane": "gnostral",
+ "device": "cpu",
+ "expected_placement": "0-1:cpu;nm=cpu",
+ "model_sha256": "d1dc2d729d88ae81dca24bfbe40a825d3c0aad37e299169e5f17f17ba9abce50",
+ "promptset_sha256": "c573a8d81684b4ce7630bf585e95860600f5d1ec7cbb469c9de0e7604cd1787e",
+ "max_tokens": 32,
+ "rounds": 5,
+ "cache_bytes": 1,
+ "profile_sha256": "ab25656f999d8659bf8fb65f52e0eef545df40fbd0dd584be3f42899073707df",
+ "builds": {
+  "a": {
+   "sha256": "527c9c216873b5b5628b5762dbae2a459155825bdab73acf16e67be8d3ee7bfe"
+  },
+  "b": {
+   "sha256": "527c9c216873b5b5628b5762dbae2a459155825bdab73acf16e67be8d3ee7bfe"
+  }
+ },
+ "verdict": {
+  "comparison": "COMPARED",
+  "result": "inconclusive (ranges overlap)",
+  "builds": {
+   "a": {
+    "n": 5,
+    "decode_tok_s": [
+     508.1885826390303,
+     615.015015345265,
+     643.6203622840354,
+     670.1570611483552,
+     677.2486780362642
+    ],
+    "min": 508.1885826390303,
+    "median": 643.6203622840354,
+    "max": 677.2486780362642
+   },
+   "b": {
+    "n": 5,
+    "decode_tok_s": [
+     616.8674698241443,
+     617.9843084252952,
+     619.1051984342654,
+     675.4617352768192,
+     711.605270731171
+    ],
+    "min": 616.8674698241443,
+    "median": 619.1051984342654,
+    "max": 711.605270731171
+   }
+  },
+  "chance_of_separated_ranges_if_equal": 0.007936507936507936
+ },
+ "cross_build_agreement": {
+  "reference": "gnostral",
+  "prompts": 32,
+  "prompts_identical": 32,
+  "token_agreement": 1.0,
+  "blocked": 0
+ },
+ "note": "parity class self: each build is gated on reproducing its own warmup"
+}

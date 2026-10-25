@@ -26,6 +26,8 @@ to the inventory). `git apply --check` against that tree passes.
 | `candle-strata-public-reconstruction.BUILD-ONLY.patch` | `f9549036...98e7b` | **Not for the lab.** Lets the public candle `35d7ae7` stand in for the unpublished lab candle-strata (`f0f334aa`): reconstructed `expert_slice_to`, the Q-010 `cpu_expert_matmul_k`, `cuda_allocation_bytes`, and load-refusing Bonsai PQ2_0/PTQ1_0 stubs |
 
 The lab tree already carries the real candle-strata; apply `0001` to `0010` in order there, not the BUILD-ONLY patch.
+`python3 scripts/engine_series.py check --tree vendor/mistralrs-strata` tells which of them a tree carries, from
+file contents ([`SERIES-STATES.json`](SERIES-STATES.json), regenerated with `record` whenever a patch is added).
 
 ## Runtime selection (same binary, A/B by environment)
 

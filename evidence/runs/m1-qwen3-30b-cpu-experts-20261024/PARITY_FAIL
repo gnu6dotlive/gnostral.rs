@@ -1,0 +1,231 @@
+cpu-experts/per-route
+{
+  "candidate": "per-route",
+  "reference": "per-route",
+  "results": [
+    {
+      "detail": "32 tokens identical",
+      "divergence_index": null,
+      "matched_prefix": 32,
+      "prompt_id": "q01-capital",
+      "verdict": "PARITY_PASS"
+    },
+    {
+      "detail": "32 tokens identical",
+      "divergence_index": null,
+      "matched_prefix": 32,
+      "prompt_id": "q02-arith-mul",
+      "verdict": "PARITY_PASS"
+    },
+    {
+      "detail": "32 tokens identical",
+      "divergence_index": null,
+      "matched_prefix": 32,
+      "prompt_id": "q03-arith-word",
+      "verdict": "PARITY_PASS"
+    },
+    {
+      "detail": "diverged at token 27: 911 vs 13",
+      "divergence_index": 27,
+      "matched_prefix": 27,
+      "prompt_id": "q04-units",
+      "verdict": "DIVERGED"
+    },
+    {
+      "detail": "32 tokens identical",
+      "divergence_index": null,
+      "matched_prefix": 32,
+      "prompt_id": "q05-rust-fn",
+      "verdict": "PARITY_PASS"
+    },
+    {
+      "detail": "32 tokens identical",
+      "divergence_index": null,
+      "matched_prefix": 32,
+      "prompt_id": "q06-python-fn",
+      "verdict": "PARITY_PASS"
+    },
+    {
+      "detail": "diverged at token 16: 13719 vs 4675",
+      "divergence_index": 16,
+      "matched_prefix": 16,
+      "prompt_id": "q07-sql",
+      "verdict": "DIVERGED"
+    },
+    {
+      "detail": "32 tokens identical",
+      "divergence_index": null,
+      "matched_prefix": 32,
+      "prompt_id": "q08-regex",
+      "verdict": "PARITY_PASS"
+    },
+    {
+      "detail": "diverged at token 24: 504 vs 315",
+      "divergence_index": 24,
+      "matched_prefix": 24,
+      "prompt_id": "q09-bug",
+      "verdict": "DIVERGED"
+    },
+    {
+      "detail": "diverged at token 23: 11 vs 304",
+      "divergence_index": 23,
+      "matched_prefix": 23,
+      "prompt_id": "q10-fr-explain",
+      "verdict": "DIVERGED"
+    },
+    {
+      "detail": "diverged at token 10: 8585 vs 11652",
+      "divergence_index": 10,
+      "matched_prefix": 10,
+      "prompt_id": "q11-fr-translate",
+      "verdict": "DIVERGED"
+    },
+    {
+      "detail": "32 tokens identical",
+      "divergence_index": null,
+      "matched_prefix": 32,
+      "prompt_id": "q12-de-translate",
+      "verdict": "PARITY_PASS"
+    },
+    {
+      "detail": "32 tokens identical",
+      "divergence_index": null,
+      "matched_prefix": 32,
+      "prompt_id": "q13-es-short",
+      "verdict": "PARITY_PASS"
+    },
+    {
+      "detail": "32 tokens identical",
+      "divergence_index": null,
+      "matched_prefix": 32,
+      "prompt_id": "q14-list-format",
+      "verdict": "PARITY_PASS"
+    },
+    {
+      "detail": "32 tokens identical",
+      "divergence_index": null,
+      "matched_prefix": 32,
+      "prompt_id": "q15-json-format",
+      "verdict": "PARITY_PASS"
+    },
+    {
+      "detail": "32 tokens identical",
+      "divergence_index": null,
+      "matched_prefix": 32,
+      "prompt_id": "q16-yes-no",
+      "verdict": "PARITY_PASS"
+    },
+    {
+      "detail": "32 tokens identical",
+      "divergence_index": null,
+      "matched_prefix": 32,
+      "prompt_id": "q17-logic",
+      "verdict": "PARITY_PASS"
+    },
+    {
+      "detail": "32 tokens identical",
+      "divergence_index": null,
+      "matched_prefix": 32,
+      "prompt_id": "q18-sequence",
+      "verdict": "PARITY_PASS"
+    },
+    {
+      "detail": "diverged at token 8: 311 vs 369",
+      "divergence_index": 8,
+      "matched_prefix": 8,
+      "prompt_id": "q19-summary-tech",
+      "verdict": "DIVERGED"
+    },
+    {
+      "detail": "32 tokens identical",
+      "divergence_index": null,
+      "matched_prefix": 32,
+      "prompt_id": "q20-summary-memory",
+      "verdict": "PARITY_PASS"
+    },
+    {
+      "detail": "32 tokens identical",
+      "divergence_index": null,
+      "matched_prefix": 32,
+      "prompt_id": "q21-compare",
+      "verdict": "PARITY_PASS"
+    },
+    {
+      "detail": "32 tokens identical",
+      "divergence_index": null,
+      "matched_prefix": 32,
+      "prompt_id": "q22-definition",
+      "verdict": "PARITY_PASS"
+    },
+    {
+      "detail": "32 tokens identical",
+      "divergence_index": null,
+      "matched_prefix": 32,
+      "prompt_id": "q23-steps",
+      "verdict": "PARITY_PASS"
+    },
+    {
+      "detail": "32 tokens identical",
+      "divergence_index": null,
+      "matched_prefix": 32,
+      "prompt_id": "q24-math-algebra",
+      "verdict": "PARITY_PASS"
+    },
+    {
+      "detail": "32 tokens identical",
+      "divergence_index": null,
+      "matched_prefix": 32,
+      "prompt_id": "q25-math-prob",
+      "verdict": "PARITY_PASS"
+    },
+    {
+      "detail": "32 tokens identical",
+      "divergence_index": null,
+      "matched_prefix": 32,
+      "prompt_id": "q26-history",
+      "verdict": "PARITY_PASS"
+    },
+    {
+      "detail": "diverged at token 29: 382 vs 13",
+      "divergence_index": 29,
+      "matched_prefix": 29,
+      "prompt_id": "q27-science",
+      "verdict": "DIVERGED"
+    },
+    {
+      "detail": "32 tokens identical",
+      "divergence_index": null,
+      "matched_prefix": 32,
+      "prompt_id": "q28-rewrite",
+      "verdict": "PARITY_PASS"
+    },
+    {
+      "detail": "diverged at token 21: 1565 vs 25",
+      "divergence_index": 21,
+      "matched_prefix": 21,
+      "prompt_id": "q29-code-explain",
+      "verdict": "DIVERGED"
+    },
+    {
+      "detail": "32 tokens identical",
+      "divergence_index": null,
+      "matched_prefix": 32,
+      "prompt_id": "q30-constraint",
+      "verdict": "PARITY_PASS"
+    },
+    {
+      "detail": "32 tokens identical",
+      "divergence_index": null,
+      "matched_prefix": 32,
+      "prompt_id": "q31-long-instruction",
+      "verdict": "PARITY_PASS"
+    },
+    {
+      "detail": "diverged at token 23: 1850 vs 4185",
+      "divergence_index": 23,
+      "matched_prefix": 23,
+      "prompt_id": "q32-refusal-boundary",
+      "verdict": "DIVERGED"
+    }
+  ]
+}
