@@ -80,13 +80,13 @@ Verify each line in your first report; do not trust it.
 | Item | Last recorded value | Source |
 | --- | --- | --- |
 | Checkout | `~/Projects/gnostral.rs` | paths in the M1 receipts |
-| Engine tree | `vendor/mistralrs-strata` inside the checkout, ignored by git | `.gitignore`, M1 receipts |
+| Engine tree | `vendor/mistralrs-strata` inside the checkout, ignored by git; absent on 2026-10-25, rebuilt per QUEUE answer A | `.gitignore`, L-001 report |
 | Engine build directory | `.ci-cache/mistralrs-target` in the checkout | M1 plan `binary_path` |
 | candle-strata | revision `f0f334aa`, private; its path is in the `[patch]` section of `vendor/mistralrs-strata/Cargo.toml` | F-002 |
 | Benchmark model (M1) | `/mnt/models/active/gnostral/Qwen3-30B-A3B-Q2_K.gguf`, SHA-256 `db3ce897ccc9e7d9dbf17fe083cae7880a2092aa473b45eba8b77715aa9ca170` | M1 plan |
 | Threads used by the benchmark | 20 (`host_fingerprint` `cuda:x86_64:20`) | M1 plan |
 | GPU | RTX 3070, 8 GB, shared with the desktop | F-032 |
-| The owner's container | a llama-server container, name unknown here: `docker ps` | F-032 |
+| The owner's container | `lab-llamacpp-llamacpp-1` (llama.cpp server-cuda); other services on the host are not to be stopped | L-001 report, owner |
 | Owner's target model family | Qwen3.5/3.6 MoE, GGUF architecture `qwen35moe`; expert residency covers it from engine patch `0011` (CPU fixture only so far) | F-026, F-027, F-038 |
 
 ## 6. Start of every session

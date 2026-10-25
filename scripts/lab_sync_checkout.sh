@@ -82,7 +82,7 @@ if [[ -d vendor/mistralrs-strata ]]; then
   run python3 scripts/engine_series.py check --tree vendor/mistralrs-strata || true
 fi
 say "backup: $backup"
-ls -la "$backup" | tee -a "$log"
+for f in "$backup"/*; do say "$(stat -c %s "$f") bytes  $(basename "$f")"; done
 cp "$log" "$backup/sync.log"
 rm -f "$log"
 say "DONE. Read docs/WORKING_AGREEMENT.md, docs/lab/CONTRACT.md, docs/lab/QUEUE.md, then start L-001."
