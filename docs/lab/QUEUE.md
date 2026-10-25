@@ -7,6 +7,68 @@ cloud then journals it and updates this file. `<date>` is `yyyymmdd`, the day yo
 Last updated: 2026-10-25, engine series `0001` to `0011`. Apply `0011` during L-001 if the tree stops at
 `0010`, and rebuild (contract section 7) before L-004.
 
+## Owner's answers to the L-001 report of 2026-10-25 (BLOCKED)
+
+These unblock L-001. Resume it at its step 1 once A is done.
+
+**A. Engine tree: rebuild `vendor/mistralrs-strata` in this checkout from the tree that built the M1
+binaries.** Copy, never symlink, and never modify the source: patch `0001` adds path dependencies such
+as `../../../crates/gnostral-expert-residency`, which must resolve to this checkout's `crates/`, not to
+another project's.
+
+1. Find the tree. Cargo's dep-info files name the absolute source paths:
+   ```sh
+   grep -ho '[^ ]*/mistralrs-core/src/lib\.rs' .ci-cache/mistralrs-target/release/examples/gnostral_capture.d \
+     .ci-cache/mistralrs-target/release/deps/mistralrs_core-*.d 2>/dev/null | sort | uniq -c
+   ```
+   `SRC` is that path without `/mistralrs-core/src/lib.rs`. One `SRC`: go on. None, or several: stop and
+   report the output. If `SRC` no longer exists, use `~/Projects/gnostral-q009-hotpath-20261010/vendor/mistralrs-strata`
+   (BASELINE in your report) and say so.
+2. Read it without touching it:
+   ```sh
+   python3 scripts/engine_series.py check --tree "$SRC"
+   grep -n -A6 '^\[patch' "$SRC/Cargo.toml"
+   ```
+   A state `NONE` here: stop and report.
+3. Save the M1 binaries before anything rebuilds over them:
+   ```sh
+   mkdir -p ~/gnostral-binaries/m1-20261024
+   cp -p .ci-cache/mistralrs-target/release/examples/gnostral_capture .ci-cache/mistralrs-target/release/gnostral-bench \
+     ~/gnostral-binaries/m1-20261024/
+   ```
+4. Copy the engine tree, and the candle-strata tree its `[patch]` section points to, keeping their relative
+   layout (stop if either destination exists):
+   ```sh
+   rsync -a --exclude /target/ "$SRC/" vendor/mistralrs-strata/
+   # if [patch] says path = "../candle-strata/...": the source is "$SRC/../candle-strata"
+   rsync -a --exclude /target/ "$SRC/../candle-strata/" vendor/candle-strata/
+   git -C vendor/candle-strata rev-parse HEAD        # f0f334aa... expected
+   ```
+   If `[patch]` uses an absolute path, do not copy candle-strata; report the path.
+5. Bring the copy to `0011` and check:
+   ```sh
+   python3 scripts/engine_series.py check --tree vendor/mistralrs-strata
+   cd vendor/mistralrs-strata
+   git apply ../../patches/engine-program/00NN-*.patch     # each missing patch, in order
+   cd ../..
+   python3 scripts/engine_series.py check --tree vendor/mistralrs-strata   # must say 0011
+   ```
+6. Build as in contract section 7 (`--features cuda,gnostral-expert-residency,gnostral-trace`) and record
+   the new binaries' SHA-256.
+
+**B. Model.** The only model on this machine is `/mnt/models/active/gnostral/Qwen3-30B-A3B-Q2_K.gguf`
+(Qwen3, architecture `qwen3moe`, the M1 model). L-002 inventories that file. There is no `qwen35moe`
+file yet: L-005 waits for the owner to provide one (an `IQ4_XS` file would be refused at load, F-026).
+
+**C. Container.** The owner's llama-server container is `lab-llamacpp-llamacpp-1`: `docker stop` it before a
+measurement series and `docker start` it after, as section 8 of the contract says. Stop nothing else.
+Before each series, record which processes hold GPU memory:
+`nvidia-smi --query-compute-apps=pid,process_name,used_memory --format=csv`; if a service other than the
+desktop holds some (ollama, comfyui, ...), report it and ask before measuring.
+
+**D. Untracked files under `evidence/runs/`.** Leave them where they are. They are listed in your report;
+committing or removing them is a later decision.
+
 ## L-001 · Session baseline and the candle-strata question
 
 **Why:** a fresh worker must prove what the machine holds before measuring anything. F-036 left one
