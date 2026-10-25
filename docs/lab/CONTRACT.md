@@ -91,6 +91,14 @@ Verify each line in your first report; do not trust it.
 
 ## 6. Start of every session
 
+A checkout that is behind GitHub, carries local edits or comes from an earlier session is first brought
+to the remote with `scripts/lab_sync_checkout.sh`: without arguments it only reports, with `--yes` it
+saves everything that is not on GitHub under `~/gnostral-backup-<time>/`, then overwrites the
+checkout. It never touches `vendor/`, `.ci-cache/` or `evidence/runs/`. When the checkout is too old to
+contain the script: `git fetch origin && git show origin/feat/engine-program:scripts/lab_sync_checkout.sh
+> /tmp/lab_sync_checkout.sh` and run that copy. Its log (`sync.log` in the backup) goes into the L-001
+report. Then:
+
 ```sh
 cd ~/Projects/gnostral.rs
 git status --short                     # anything you did not create: stop and report
