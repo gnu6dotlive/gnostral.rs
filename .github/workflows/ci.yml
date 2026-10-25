@@ -107,6 +107,8 @@ jobs:
           python3 -m unittest discover -s harness/synthetic-moe -p 'test_*.py'
       - name: GGUF model inventory (F-026)
         run: python3 -m unittest discover -s harness/model-inventory -p 'test_*.py'
+      - name: Two-build A/B gates and verdict
+        run: python3 -m unittest discover -s harness/diag -p 'test_*.py'
       - name: Script gates
         run: python3 -m unittest discover -s scripts -p 'test_*.py'
       - name: Documentation links

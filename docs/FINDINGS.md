@@ -73,7 +73,7 @@ Rules:
 - **Why it measured little:** `GNOSTRAL_EXPERT_CACHE_BYTES=1` with an empty profile keeps every
   expert on the CPU even with `--device cuda`; about 0.3 s of decode per capture is dominated by
   clocks, CUDA initialisation and the desktop.
-- **Evidence:** lab-only: `evidence/runs/synthetic-moe-gpu-20261023/`.
+- **Evidence:** `evidence/runs/synthetic-moe-gpu-20261023/`, committed in `9495db5`.
 
 ### F-007 · 2026-10-23 · Larger CUDA synthetic run: range-based ordering on a noise model
 
@@ -98,7 +98,7 @@ Rules:
 - **What:** Qwen3-30B-A3B Q2_K, CUDA, experts on the CPU. The `per-route` warmup diverged from the
   `per-route` reference capture on 9/32 prompts (token indices 8 to 29); the parity stop ended the
   run before any timing was recorded. CUDA was proven (pid listed by `nvidia-smi`), about 7.8 tok/s.
-- **Evidence:** lab-only: `evidence/runs/m1-qwen3-30b-cpu-experts-20261024/` (`PARITY_FAIL`).
+- **Evidence:** `evidence/runs/m1-qwen3-30b-cpu-experts-20261024/` (`PARITY_FAIL`), committed in `9495db5`.
 - **Process note:** an earlier attempt of the same run failed (lanes were not given `--model`) and
   its output directory was removed by the relaunch command. A controlled failure is evidence
   ([Q-025](../quests/Q-025-ENGINE-DIRECTION.md)); relaunches now use a new directory.
@@ -452,6 +452,11 @@ Rules:
   repeat would serve GPUs flash-attn does not support.
 - **Evidence:** `evidence/runs/m1-sdpa-sync-ab-20261024/`, `evidence/runs/m1-nsys-20261024/` (capture
   only), `vendor/mistralrs-strata/mistralrs-core/src/attention/mod.rs`.
+- **Receipts committed by the lab (`9495db5`), class now OBSERVED:** `nsys stats` CSVs for the one-prompt,
+  32-token capture, 33 forward passes (warmup, prefill, 31 decode steps; the output-head kernel runs 33
+  times). Per pass: 2,055 kernels, 867 `copy2d_bf16` (18.06 per layer), 1,273 `cuMemAllocAsync`, 152
+  device-to-host copies. The lab's 2040, 1225 and 145 were counted another way; the shape of the
+  finding does not change. The sync A/B's `GNOSTRAL_METRICS` lines are in `metrics.txt`.
 
 ### F-036 · 2026-10-24 · On x86 the plain MoE path dequantises every expert, every step
 
@@ -501,13 +506,23 @@ Rules:
   fallback. F-030's comparison against llama.cpp measured this fallback, not the model.
 - **Evidence:** `evidence/runs/qwen35moe-cpu-moe-fallback-20261024/summary.json` and receipts.
 
+### F-037 · 2026-10-25 · Two copies of one binary were "ranked" with two runs each
+
+- **Class:** PROCESS; the probability is PROVEN (counting), the anecdote OBSERVED without a kept receipt.
+- **What:** smoke-testing `harness/diag/binary_ab.py` on the cloud VM with the same capture binary under
+  two labels, two measured runs each, the range rule answered "b slower" (594-643 against 669-720
+  tok/s). The directory was overwritten by the next smoke run, so that one has no receipt. With five
+  runs each the same test answered "inconclusive" (receipt below).
+- **Why it matters:** if both sides were identical, n runs each fall in disjoint ranges with probability
+  2 / C(2n, n): 33% at n = 2, 10% at n = 3, 0.8% at n = 5. The range rule protects against overlapping
+  ranges, not against small n. The four-lane bench already measures 5 runs per lane.
+- **Consequence:** `binary_ab.py` defaults to 5 rounds, refuses fewer than 3, and prints that probability
+  next to every result; the lab contract states the same rule.
+- **Evidence:** `evidence/runs/binary-ab-identical-builds-cpu-20261025/ab-summary.json`.
+
 ## Evidence not yet in the repository
 
-These directories exist on the lab disk only. Until they are committed they are not program
-evidence, and a disk failure would erase them.
-
-| Directory | Entry |
-| --- | --- |
-| `evidence/runs/synthetic-moe-gpu-20261023/` | F-006 |
-| `evidence/runs/m1-qwen3-30b-cpu-experts-20261024/` | F-009 |
-| `evidence/runs/m1-qwen3-30b-cpu-experts-v2-20261024/` (refused run) | F-032 |
+None as of `9495db5`. The three directories listed here until then (`synthetic-moe-gpu-20261023/` for
+F-006, `m1-qwen3-30b-cpu-experts-20261024/` for F-009, `m1-qwen3-30b-cpu-experts-v2-20261024/`, the
+refused run of F-032) are committed, scrubbed of home paths. A run that stays on the lab disk is listed
+here until it is committed.

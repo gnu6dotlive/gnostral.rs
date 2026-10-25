@@ -17,6 +17,7 @@
 | Build the best engine for constrained hardware | [Engine program](ENGINE_PROGRAM.md) |
 | Learn what the engine program found, including what it got wrong | [Findings journal](FINDINGS.md) |
 | Know how work here is done, by people and agents | [Working agreement](WORKING_AGREEMENT.md) |
+| Run the engine program's work on the lab machine | [Lab worker contract](lab/CONTRACT.md) and [queue](lab/QUEUE.md) |
 | Understand the boundary between engines and supervisor | [Architecture and authority](ARCHITECTURE.md) |
 | Run tests without a GPU | [Reproducibility guide](REPRODUCIBILITY.md) |
 | Inspect primary measurements and negative results | [Evidence index](../evidence/README.md) |
