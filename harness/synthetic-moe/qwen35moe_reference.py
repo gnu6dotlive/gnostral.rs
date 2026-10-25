@@ -22,6 +22,11 @@ difference does not change every later position.
 
 Quantised expert tensors are dequantised with gguf-py; for a clean comparison use F32 experts
 (`make_qwen35moe_gguf.py --expert-type f32`), which leaves only float rounding between engines.
+
+`--expert-activations q8_k` rounds the input of every routed-expert projection the way ggml's
+`quantize_row_q8_K_ref` does before a k-quant dot product (llama.cpp's CPU path, candle's quantized
+matmul, the engine's expert residency). The model definition has float activations; this option
+reproduces what a Q8_K-activation engine computes, to tell its rounding from a defect (F-039).
 """
 
 from __future__ import annotations
@@ -34,6 +39,7 @@ from pathlib import Path
 import numpy as np
 
 ARCH = "qwen35moe"
+QK_K = 256
 SPECIALS = {"<|im_start|>": 256, "<|im_end|>": 257}
 
 
@@ -75,6 +81,19 @@ def sigmoid(x):
 
 def l2norm(x, eps=1e-6):
     return x / np.sqrt((x * x).sum(-1, keepdims=True) + eps)
+
+
+def q8k(x: np.ndarray) -> np.ndarray:
+    """ggml `quantize_row_q8_K_ref` and back: per 256 values, in float32, the signed value of largest
+    magnitude maps to -127, the rest round half to even, clamped at 127; a zero block stays zero."""
+    blocks = x.astype(np.float32).reshape(-1, QK_K)
+    peak = blocks[np.arange(len(blocks)), np.abs(blocks).argmax(-1)]
+    out = np.zeros_like(blocks)
+    nz = peak != 0
+    iscale = np.float32(-127.0) / peak[nz]
+    q = np.minimum(np.float32(127), np.rint(blocks[nz] * iscale[:, None]))
+    out[nz] = q * (np.float32(1.0) / iscale)[:, None]
+    return out.reshape(x.shape).astype(np.float64)
 
 
 def tiled_key_of_value(v_heads: int, k_heads: int) -> np.ndarray:
@@ -156,8 +175,10 @@ def attention(h, w, p, hp):
     return out @ w[p + "attn_output.weight"].T
 
 
-def moe(h, w, p, hp):
-    """`Qwen3_5MoeSparseMoeBlock.forward`: softmax router, top-k renormalised, sigmoid-gated shared expert."""
+def moe(h, w, p, hp, act=None):
+    """`Qwen3_5MoeSparseMoeBlock.forward`: softmax router, top-k renormalised, sigmoid-gated shared expert.
+    `act`, if given, rounds the input of each routed-expert projection (see `q8k`)."""
+    act = act or (lambda v: v)
     logits = h @ w[p + "ffn_gate_inp.weight"].T
     probs = np.exp(logits - logits.max(-1, keepdims=True))
     probs = probs / probs.sum(-1, keepdims=True)
@@ -166,14 +187,15 @@ def moe(h, w, p, hp):
     out = np.zeros_like(h)
     for t in range(h.shape[0]):
         weights = probs[t, top[t]] / probs[t, top[t]].sum()
+        x = act(h[t])
         for e, wt in zip(top[t], weights):
-            out[t] += wt * (down_w[e] @ (silu(gate_w[e] @ h[t]) * (up_w[e] @ h[t])))
+            out[t] += wt * (down_w[e] @ act(silu(gate_w[e] @ x) * (up_w[e] @ x)))
     shared = (silu(h @ w[p + "ffn_gate_shexp.weight"].T) * (h @ w[p + "ffn_up_shexp.weight"].T)) \
         @ w[p + "ffn_down_shexp.weight"].T
     return out + sigmoid(h @ w[p + "ffn_gate_inp_shexp.weight"])[:, None] * shared
 
 
-def forward_logprobs(tokens: list[int], w: dict, hp: dict) -> np.ndarray:
+def forward_logprobs(tokens: list[int], w: dict, hp: dict, act=None) -> np.ndarray:
     eps = hp["attention.layer_norm_rms_epsilon"]
     x = w["token_embd.weight"][tokens]
     for i in range(hp["block_count"]):
@@ -181,7 +203,7 @@ def forward_logprobs(tokens: list[int], w: dict, hp: dict) -> np.ndarray:
         h = rms(x, eps) * w[p + "attn_norm.weight"]
         full = (i + 1) % hp["full_attention_interval"] == 0
         x = x + (attention(h, w, p, hp) if full else gdn(h, w, p, hp))
-        x = x + moe(rms(x, eps) * w[p + "post_attention_norm.weight"], w, p, hp)
+        x = x + moe(rms(x, eps) * w[p + "post_attention_norm.weight"], w, p, hp, act)
     logits = (rms(x, eps) * w["output_norm.weight"]) @ w["output.weight"].T
     m = logits.max(-1, keepdims=True)
     return logits - m - np.log(np.exp(logits - m).sum(-1, keepdims=True))
@@ -221,14 +243,15 @@ def engine_steps(capture: dict, logprobs: list) -> dict:
     return out
 
 
-def judge(model: Path, gguf_py: Path, manifest: Path, capture: Path, logprobs: Path) -> dict:
+def judge(model: Path, gguf_py: Path, manifest: Path, capture: Path, logprobs: Path,
+          expert_activations: str = "f32") -> dict:
     hp, w = load(model, gguf_py)
     prompts = {p["id"]: p["text"] for p in json.loads(manifest.read_text(encoding="utf-8"))["prompts"]}
     steps = engine_steps(json.loads(capture.read_text()), json.loads(logprobs.read_text()))
     gaps, argmax_disagree, total, per_prompt = [], 0, 0, {}
     for pid, (generated, by_step) in steps.items():
         prompt = chat_tokens(prompts[pid])
-        ref = forward_logprobs(prompt + generated, w, hp)
+        ref = forward_logprobs(prompt + generated, w, hp, q8k if expert_activations == "q8_k" else None)
         disagree = []
         for i, tok in enumerate(generated):
             row = ref[len(prompt) - 1 + i]
@@ -241,7 +264,7 @@ def judge(model: Path, gguf_py: Path, manifest: Path, capture: Path, logprobs: P
         per_prompt[pid] = {"prompt_tokens": len(prompt), "steps_where_reference_argmax_differs": disagree}
     gaps.sort()
     q = lambda f: gaps[min(len(gaps) - 1, int(f * len(gaps)))]  # noqa: E731
-    return {"steps": total, "reference_argmax_differs": argmax_disagree,
+    return {"expert_activations": expert_activations, "steps": total, "reference_argmax_differs": argmax_disagree,
             "logprob_gap": {"n": len(gaps), "median": q(0.5), "p99": q(0.99), "max": gaps[-1]},
             "per_prompt": per_prompt}
 
@@ -253,9 +276,12 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--manifest", required=True)
     parser.add_argument("--capture", required=True)
     parser.add_argument("--logprobs", required=True)
+    parser.add_argument("--expert-activations", choices=["f32", "q8_k"], default="f32",
+                        help="round routed-expert inputs as a Q8_K engine does (default: the model's float)")
     parser.add_argument("--out")
     args = parser.parse_args(argv)
-    result = judge(Path(args.model), Path(args.gguf_py), Path(args.manifest), Path(args.capture), Path(args.logprobs))
+    result = judge(Path(args.model), Path(args.gguf_py), Path(args.manifest), Path(args.capture), Path(args.logprobs),
+                   args.expert_activations)
     if args.out:
         Path(args.out).write_text(json.dumps(result, indent=1))
     print(json.dumps({k: v for k, v in result.items() if k != "per_prompt"}))

@@ -4,7 +4,8 @@ Maintained by the cloud session; read [`CONTRACT.md`](CONTRACT.md) first. Take t
 item is done when its report in [`reports/`](reports/README.md) says `DONE` or `REFUSED-BY-GATE`; the
 cloud then journals it and updates this file. `<date>` is `yyyymmdd`, the day you run it.
 
-Last updated: 2026-10-25, engine series `0001` to `0010`.
+Last updated: 2026-10-25, engine series `0001` to `0011`. Apply `0011` during L-001 if the tree stops at
+`0010`, and rebuild (contract section 7) before L-004.
 
 ## L-001 · Session baseline and the candle-strata question
 
@@ -116,7 +117,48 @@ is worth on M1, gates first.
 `chance_of_separated_ranges_if_equal`, VRAM per build and the `copy2d` instance counts. **Done when:**
 `ab-summary.json` says `COMPARED` or `REFUSED` with reasons, and both nsys summaries exist.
 
-## L-005 · qwen35moe with expert residency on the owner's target (waiting)
+## L-005 · The owner's target with expert residency (M2), gates first
 
-**Blocked on the cloud:** engine patch `0011` (expert residency for `qwen35moe`) is not written yet, and
-L-002 must have found the target file. This entry will carry the commands when the patch lands.
+**Why:** engine patch `0011` gives `qwen35moe` the residency path; on the cloud fixture it removed the
+dequantise-every-expert cost and its three lanes are bit-identical (F-038). Whether that holds on the
+real model, on CUDA, with the real candle-strata, is this item. **Needs:** L-001 done with the tree at
+`0011` and rebuilt; L-002 found the target and its verdict is not `REFUSED_AT_LOAD`. Residency needs a
+**single-file** GGUF: if the target is split in shards, stop and report.
+
+Take from the target's L-002 inventory JSON: `L` = `qwen35moe.block_count`, `E` = `qwen35moe.expert_count`,
+`H` = `qwen35moe.embedding_length`, `I` = `qwen35moe.expert_feed_forward_length`.
+
+1. Smoke, one prompt, all layers on the card, every expert on the CPU (container stopped):
+   ```sh
+   R=evidence/runs/m2-<model-name>-smoke-<date>; mkdir -p $R
+   M=<target.gguf>
+   python3 -c "import hashlib,json,sys; h=hashlib.sha256(open(sys.argv[1],'rb').read()).hexdigest(); print(json.dumps({'schema':1,'model_sha256':h,'layers':int(sys.argv[2]),'experts_per_layer':int(sys.argv[3]),'ranking':[]}))" $M $L $E > $R/profile-empty.json
+   GNOSTRAL_EXPERT_CACHE_BYTES=1 GNOSTRAL_EXPERT_PROFILE=$R/profile-empty.json GNOSTRAL_MOE_EXECUTOR=grouped \
+     .ci-cache/mistralrs-target/release/examples/gnostral_capture --model-dir $(dirname $M) --file $(basename $M) \
+     --manifest harness/quality/prompts/quality-prompts-32-20261023.json --promptset-sha256 x --engine grouped \
+     --max-tokens 32 --out $R/smoke.json --no-prefix-cache --only q01-capital --gpu-layers $L > $R/smoke.stdout 2>&1
+   ```
+   The report carries: exit code, the `GNOSTRAL_PLACEMENT` and `GNOSTRAL_METRICS` lines, the residency
+   lines of the log (`grep residency $R/smoke.stdout`), `nvidia-smi` memory during the run, and the decoded
+   text of the 32 tokens if it is readable. A load error ends the item: report its last 40 lines.
+2. Only if the smoke ran: the four-lane comparison, the M1 protocol on the target:
+   ```sh
+   python3 harness/synthetic-moe/run_e2e.py \
+     --capture-bin .ci-cache/mistralrs-target/release/examples/gnostral_capture \
+     --bench-bin .ci-cache/mistralrs-target/release/gnostral-bench \
+     --out evidence/runs/m2-<model-name>-cpu-experts-<date> --model $M \
+     --layers $L --experts $E --hidden $H --moe-inter $I \
+     --device cuda --cpu-experts-only --repetitions 5 \
+     --llama-server /mnt/sandbox/sessions/gnostral-q009-llamacpp-cuda-20261010/build/llama-cuda/bin/llama-server \
+     --llama-args="-ngl 99 --cpu-moe -t 8 -c 4096 --fit off -lv 4" \
+     --llama-placement "llama.cpp offloaded=<L+1>/<L+1> cpu_moe=on"
+   ```
+   (M1 used these llama.cpp arguments; if that `llama-server` build cannot load `qwen35moe`, the report
+   says so and the comparison runs without the llama.cpp lane: drop the three `--llama-*` flags.)
+   The `gnostral` lane runs only Q2_K/Q3_K experts: if L-002's expert path for the target is
+   `residency_candle_kernel`, expect that lane to fail and the comparison to be refused; report it and
+   stop, the cloud will add lane selection to `run_e2e.py`.
+
+**Commit:** both run directories (scrubbed) and the report: per lane, parity, self-reproduction,
+placement, decode tok/s ranges, VRAM; the `pareto.md` verdict as written. **Done when:** the comparison
+says `COMPARED` or is refused with its reasons.

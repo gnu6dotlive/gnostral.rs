@@ -49,10 +49,12 @@ SOURCES = {
     "mxfp4_experts": "vendor/mistralrs-strata/mistralrs-core/src/gguf/normal_bindings.rs bind_block_tensor "
                      "(gpt-oss routed experts only)",
     "residency_architecture": "vendor/mistralrs-strata/mistralrs-core/src/pipeline/normal.rs residency pilot gate "
-                              "(Qwen3MoeForCausalLM from a GGUF, no adapters, no ISQ)",
+                              "(Qwen3MoeForCausalLM, and with patch 0011 Qwen3NextForCausalLM, from a GGUF, "
+                              "no adapters, no ISQ)",
     "residency": "vendor/mistralrs-strata/mistralrs-core/src/moe/experts/residency.rs expert stack dtype check",
     "gnostral_kernel": "vendor/mistralrs-strata/mistralrs-core/src/moe/experts/residency.rs gnostral_host_ffn",
-    "native_sizing": "patches/engine-program/0007 (Qwen3MoELoader::layer_sizes_in_bytes)",
+    "native_sizing": "patches/engine-program/0007 (Qwen3MoELoader::layer_sizes_in_bytes) and 0011 "
+                     "(Qwen3NextLoader)",
 }
 ENGINE_ARCHS = {
     "llama", "mistral3", "gemma", "gemma2", "phi2", "phi3", "phimoe", "qwen2", "qwen3", "qwen3moe",
@@ -65,7 +67,8 @@ ENGINE_LOAD = {0, 1, 2, 3, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 30}
 # Extra types loadable for routed-expert tensors of one architecture, through a dedicated binding.
 EXPERT_LOAD_BY_ARCH = {"gpt-oss": {39}}
 RESIDENCY = {10, 11, 12, 13, 14, 2, 3, 6, 7, 8}
-RESIDENCY_ARCHS = {"qwen3moe"}
+# qwen3next and qwen35moe (both through the Qwen3-Next model) need engine patch 0011.
+RESIDENCY_ARCHS = {"qwen3moe", "qwen3next", "qwen35moe"}
 GNOSTRAL_KERNEL = {10, 11}
 
 VALUE_FORMATS = {0: "B", 1: "b", 2: "H", 3: "h", 4: "I", 5: "i", 6: "f", 7: "?", 10: "Q", 11: "q", 12: "d"}

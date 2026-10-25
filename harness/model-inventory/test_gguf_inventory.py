@@ -100,7 +100,7 @@ class InventoryTests(unittest.TestCase):
         self.assertEqual(doc["types_refused_at_load"], ["IQ4_XS"])
         self.assertEqual(doc["routed_expert_paths"], {"refused_at_load": [0]})
         self.assertTrue(doc["architecture_known_to_engine"])
-        self.assertFalse(doc["expert_residency_architecture"])
+        self.assertTrue(doc["expert_residency_architecture"])
 
     def test_q4_k_experts_take_the_candle_kernel(self) -> None:
         expert_model(self.tmp / "m.gguf", "qwen3moe", Q4_K, Q4_K)
@@ -108,8 +108,14 @@ class InventoryTests(unittest.TestCase):
         self.assertEqual(doc["routed_expert_paths"], {"residency_candle_kernel": [0]})
         self.assertTrue(doc["verdict"].startswith("PARTIAL"), doc["verdict"])
 
-    def test_qwen35moe_loads_without_the_program(self) -> None:
+    def test_qwen35moe_takes_residency_since_0011(self) -> None:
         expert_model(self.tmp / "m.gguf", "qwen35moe", Q4_K, Q4_K)
+        doc = inv.inventory([self.tmp / "m.gguf"])
+        self.assertEqual(doc["routed_expert_paths"], {"residency_candle_kernel": [0]})
+        self.assertTrue(doc["verdict"].startswith("PARTIAL"), doc["verdict"])
+
+    def test_lfm2moe_loads_without_the_program(self) -> None:
+        expert_model(self.tmp / "m.gguf", "lfm2moe", Q4_K, Q4_K)
         doc = inv.inventory([self.tmp / "m.gguf"])
         self.assertEqual(doc["routed_expert_paths"], {"loads_no_residency_for_architecture": [0]})
         self.assertTrue(doc["verdict"].startswith("LOADS_WITHOUT_PROGRAM"), doc["verdict"])

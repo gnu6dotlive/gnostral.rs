@@ -1,0 +1,1 @@
+{"schema":"gnostral.placement/1","layers":["cpu","cpu","cpu","cpu"],"non_mapped":"cpu","canonical":"0-3:cpu;nm=cpu"}

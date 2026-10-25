@@ -48,6 +48,16 @@ class ReferenceTests(unittest.TestCase):
         # the delta rule replaces the value stored under a key (a plain linear-attention sum would give v1 + v2)
         np.testing.assert_allclose(out[1, 0], [5.0, -2.0], atol=1e-12)
 
+    def test_q8k_rounds_like_ggml(self) -> None:
+        x = np.zeros(512)
+        x[:4] = [-127.0, 2.5, 3.5, 200e-3]   # peak -127: scale exactly 1, so ties are exact
+        x[300] = 0.8                        # second block: a positive peak also lands on 127 steps
+        q = self.ref.q8k(x)
+        self.assertEqual(list(q[:4]), [-127.0, 2.0, 4.0, 0.0])   # half to even, as ggml's nearest_int
+        np.testing.assert_allclose(q[300], 0.8, rtol=1e-6)
+        self.assertTrue(np.all(q[256:300] == 0) and np.all(q[301:] == 0))
+        self.assertTrue(np.all(self.ref.q8k(np.zeros(256)) == 0))
+
     def test_tiled_order_matches_the_converter_permutation(self) -> None:
         # llama.cpp conversion/qwen.py _reorder_v_heads: reshape [k_heads, v_per_k, d], swap the first two axes
         for k_heads, v_per_k in [(2, 2), (2, 4), (4, 1), (3, 2)]:

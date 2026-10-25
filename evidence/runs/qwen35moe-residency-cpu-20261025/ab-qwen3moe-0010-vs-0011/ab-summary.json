@@ -1,0 +1,57 @@
+{
+ "schema": "gnostral.binary-ab/1",
+ "lane": "per-route",
+ "device": "cpu",
+ "expected_placement": "0-1:cpu;nm=cpu",
+ "model_sha256": "d1dc2d729d88ae81dca24bfbe40a825d3c0aad37e299169e5f17f17ba9abce50",
+ "promptset_sha256": "c573a8d81684b4ce7630bf585e95860600f5d1ec7cbb469c9de0e7604cd1787e",
+ "max_tokens": 32,
+ "rounds": 3,
+ "cache_bytes": 1,
+ "profile_sha256": "ab25656f999d8659bf8fb65f52e0eef545df40fbd0dd584be3f42899073707df",
+ "builds": {
+  "s0010": {
+   "sha256": "527c9c216873b5b5628b5762dbae2a459155825bdab73acf16e67be8d3ee7bfe"
+  },
+  "s0011": {
+   "sha256": "c357ddaeef6bfaf7f81f87d34926fd6303028081598bdd4990f2542faab08478"
+  }
+ },
+ "verdict": {
+  "comparison": "COMPARED",
+  "result": "inconclusive (ranges overlap)",
+  "builds": {
+   "s0010": {
+    "n": 3,
+    "decode_tok_s": [
+     928.377146847126,
+     937.7289375753855,
+     950.7892231316328
+    ],
+    "min": 928.377146847126,
+    "median": 937.7289375753855,
+    "max": 950.7892231316328
+   },
+   "s0011": {
+    "n": 3,
+    "decode_tok_s": [
+     915.9212813244515,
+     934.3065654560133,
+     936.8709985580673
+    ],
+    "min": 915.9212813244515,
+    "median": 934.3065654560133,
+    "max": 936.8709985580673
+   }
+  },
+  "chance_of_separated_ranges_if_equal": 0.1
+ },
+ "cross_build_agreement": {
+  "reference": "per-route",
+  "prompts": 32,
+  "prompts_identical": 32,
+  "token_agreement": 1.0,
+  "blocked": 0
+ },
+ "note": "parity class self: each build is gated on reproducing its own warmup"
+}

@@ -87,7 +87,7 @@ Verify each line in your first report; do not trust it.
 | Threads used by the benchmark | 20 (`host_fingerprint` `cuda:x86_64:20`) | M1 plan |
 | GPU | RTX 3070, 8 GB, shared with the desktop | F-032 |
 | The owner's container | a llama-server container, name unknown here: `docker ps` | F-032 |
-| Owner's target model family | Qwen3.5/3.6 MoE, GGUF architecture `qwen35moe`; the engine's expert residency does not cover it yet | F-026, F-027 |
+| Owner's target model family | Qwen3.5/3.6 MoE, GGUF architecture `qwen35moe`; expert residency covers it from engine patch `0011` (CPU fixture only so far) | F-026, F-027, F-038 |
 
 ## 6. Start of every session
 

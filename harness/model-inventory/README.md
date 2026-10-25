@@ -13,10 +13,12 @@ Expert paths, from fastest to refused:
 
 | Path | Meaning |
 | --- | --- |
-| `gnostral_kernel` | `qwen3moe`, gate/up and down Q2_K or Q3_K: the Q-029 kernels (`GNOSTRAL_CPU_KERNEL=gnostral`) |
-| `residency_candle_kernel` | `qwen3moe`, residency accepts the types; host experts run candle's quantised matmul |
-| `loads_residency_refuses_types` | `qwen3moe`, the engine loads the types but residency refuses these stacks |
-| `loads_no_residency_for_architecture` | the engine loads the model, but residency is a `qwen3moe`-only pilot (F-027) |
+| `gnostral_kernel` | a residency architecture, gate/up and down Q2_K or Q3_K: the Q-029 kernels (`GNOSTRAL_CPU_EXPERT_KERNEL=gnostral`) |
+| `residency_candle_kernel` | a residency architecture, residency accepts the types; host experts run candle's quantised matmul |
+| `loads_residency_refuses_types` | a residency architecture, the engine loads the types but residency refuses these stacks |
+| `loads_no_residency_for_architecture` | the engine loads the model, but residency does not cover its architecture (F-027) |
+
+Residency architectures: `qwen3moe`, and with engine patch `0011` also `qwen3next` and `qwen35moe` (F-038).
 | `refused_at_load` | at least one type has no mapping (MXFP4 maps only for gpt-oss experts); the load fails |
 | `fused_gate_up_unchecked` | a fused `ffn_gate_up_exps` tensor; whether residency could use it is not checked |
 
