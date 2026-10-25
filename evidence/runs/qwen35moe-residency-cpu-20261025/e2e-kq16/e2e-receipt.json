@@ -1,0 +1,123 @@
+{
+  "schema": "gnostral.rs/synthetic-moe-e2e-device/1",
+  "device": "cpu",
+  "model": {
+    "path": "/tmp/claude-0/-home-user/a0b4c4df-3cc8-5058-8f48-bdead3f347a3/scratchpad/q35/b1/kq.gguf",
+    "layers": 4,
+    "experts": 16,
+    "hidden": 512,
+    "moe_inter": 256
+  },
+  "expert_bytes_total": 9109504,
+  "max_tokens": 32,
+  "repetitions": 3,
+  "note": "synthetic noise model: proves plumbing, not engine performance",
+  "configs": [
+    {
+      "config": "cpu-experts",
+      "profile_sample": null,
+      "cache_bytes": 1,
+      "profile": "/tmp/claude-0/-home-user/a0b4c4df-3cc8-5058-8f48-bdead3f347a3/scratchpad/q35/b1/e2e-kq16/profile-empty.json",
+      "bench_exit": 1,
+      "baseline": "per-route",
+      "lanes": {
+        "per-route": {
+          "decode_tok_s": [
+            276.90643543374114,
+            283.89242897681436,
+            281.16419398768505
+          ],
+          "parity": [
+            "PASS",
+            "PASS",
+            "PASS"
+          ],
+          "device": [],
+          "vram_mib": [
+            null,
+            null,
+            null
+          ],
+          "placement": [
+            "0-3:cpu;nm=cpu",
+            "0-3:cpu;nm=cpu",
+            "0-3:cpu;nm=cpu"
+          ],
+          "self_reproducibility": [
+            "PASS",
+            "PASS",
+            "PASS"
+          ],
+          "min": 276.90643543374114,
+          "median": 281.16419398768505,
+          "max": 283.89242897681436,
+          "verdict_vs_baseline": "baseline"
+        },
+        "grouped": {
+          "decode_tok_s": [
+            289.83866220589533,
+            265.2849736221749,
+            279.3997283528467
+          ],
+          "parity": [
+            "PASS",
+            "PASS",
+            "PASS"
+          ],
+          "device": [],
+          "vram_mib": [
+            null,
+            null,
+            null
+          ],
+          "placement": [
+            "0-3:cpu;nm=cpu",
+            "0-3:cpu;nm=cpu",
+            "0-3:cpu;nm=cpu"
+          ],
+          "self_reproducibility": [
+            "PASS",
+            "PASS",
+            "PASS"
+          ],
+          "min": 265.2849736221749,
+          "median": 279.3997283528467,
+          "max": 289.83866220589533,
+          "verdict_vs_baseline": "inconclusive (ranges overlap)"
+        },
+        "gnostral": {
+          "decode_tok_s": [
+            195.79349721423222,
+            187.92439027731197,
+            206.82690469165485
+          ],
+          "parity": [
+            "PASS",
+            "PASS",
+            "PASS"
+          ],
+          "device": [],
+          "vram_mib": [
+            null,
+            null,
+            null
+          ],
+          "placement": [
+            "0-3:cpu;nm=cpu",
+            "0-3:cpu;nm=cpu",
+            "0-3:cpu;nm=cpu"
+          ],
+          "self_reproducibility": [
+            "PASS",
+            "PASS",
+            "PASS"
+          ],
+          "min": 187.92439027731197,
+          "median": 195.79349721423222,
+          "max": 206.82690469165485,
+          "verdict_vs_baseline": "slower"
+        }
+      }
+    }
+  ]
+}

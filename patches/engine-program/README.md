@@ -23,9 +23,10 @@ to the inventory). `git apply --check` against that tree passes.
 | `0008-mistralrs-strata-placement-report-gpu-layers-q031.patch` | `86cd4e16...adb831` | On top of `0007`: `GNOSTRAL_PLACEMENT_OUT` placement report from `DeviceMapSetting::into_mapper` (feature `gnostral-trace`), `gnostral_capture --gpu-layers N` and a `GNOSTRAL_PLACEMENT` line recorded in the capture; a test that walks the native GGUF path and fails without `0007` |
 | `0009-mistralrs-strata-moe-transfer-spans-q042.patch` | `5ffecbcd...ef4b07` | On top of `0008` (needs `crates/gnostral-trace` with the `gpu_wait`, `host_transfer`, `moe_bookkeeping` phases): the grouped executor times device-to-host and host-to-device copies, the routing plan/gather/scatter, and, only while a timeline records, drains the device queue before each host read so waits are not charged to copies. Bit-identical captures with tracing on and off |
 | `0010-mistralrs-strata-prefill-consistency-check-q030.patch` | `05052183...e68128f` | On top of `0009`: the `gnostral_prefill_check` example. For each prompt of a capture and each step i < K, one raw-logits prefill of the prompt plus the first i captured tokens must predict the captured token; checks the decode path against the prefill path (F-028) |
+| `0011-mistralrs-strata-qwen35moe-expert-residency-q027.patch` | `74281bf0...4fc2f4` | On top of `0010`: expert residency for Qwen3-Next, the model `qwen35moe` GGUFs load through. The runtime setup moves into `moe::runtime_from_environment` (shared with Qwen3 MoE, whose captures stay byte-identical), `SparseMoeBlock` builds routed experts with `new_resident`, the pipeline gate accepts `Qwen3NextForCausalLM`, and `Qwen3NextLoader` sizes layers without the routed stacks under residency. Sizing test on a Qwen3-Next geometry; F-038 |
 | `candle-strata-public-reconstruction.BUILD-ONLY.patch` | `f9549036...98e7b` | **Not for the lab.** Lets the public candle `35d7ae7` stand in for the unpublished lab candle-strata (`f0f334aa`): reconstructed `expert_slice_to`, the Q-010 `cpu_expert_matmul_k`, `cuda_allocation_bytes`, and load-refusing Bonsai PQ2_0/PTQ1_0 stubs |
 
-The lab tree already carries the real candle-strata; apply `0001` to `0010` in order there, not the BUILD-ONLY patch.
+The lab tree already carries the real candle-strata; apply `0001` to `0011` in order there, not the BUILD-ONLY patch.
 `python3 scripts/engine_series.py check --tree vendor/mistralrs-strata` tells which of them a tree carries, from
 file contents ([`SERIES-STATES.json`](SERIES-STATES.json), regenerated with `record` whenever a patch is added).
 
@@ -56,7 +57,7 @@ file contents ([`SERIES-STATES.json`](SERIES-STATES.json), regenerated with `rec
 ## Verified here (CPU only, no CUDA build)
 
 ```sh
-cargo test -p mistralrs-core --features gnostral-expert-residency,gnostral-trace --lib moe   # 53 passed, 1 ignored
+cargo test -p mistralrs-core --features gnostral-expert-residency,gnostral-trace --lib moe   # 55 passed, 1 ignored with 0011 (53 with 0010)
 ```
 
 - `grouped_cpu_executor_is_bit_equal_to_per_route`: 9 tokens x top-4 over 6 Q2_K/Q3_K experts,

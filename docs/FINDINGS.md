@@ -339,6 +339,8 @@ Rules:
   of correctness on k-quant fixtures (the llama.cpp lane is already parity class `self`). The reference
   becomes the qwen35moe oracle for the residency port: residency output, plain output and reference.
 - **Evidence:** `evidence/runs/qwen35moe-fixture-oracle-20261024/`.
+- **Reading refined by F-039:** llama.cpp's k-quant deviation is the rounding of expert inputs to Q8_K,
+  which the engine's residency path shares; the plain path matched because it keeps float activations.
 
 ### F-029 · 2026-10-24 · I first read the cross-engine divergence as a possible engine fault
 
@@ -519,6 +521,69 @@ Rules:
 - **Consequence:** `binary_ab.py` defaults to 5 rounds, refuses fewer than 3, and prints that probability
   next to every result; the lab contract states the same rule.
 - **Evidence:** `evidence/runs/binary-ab-identical-builds-cpu-20261025/ab-summary.json`.
+
+### F-038 · 2026-10-25 · Expert residency now covers qwen35moe; on the fixture it removes the dequantise-all cost
+
+- **Class:** OBSERVED on the cloud VM with the synthetic fixtures; the bit identity of the three
+  residency lanes is exact equality over 32 prompts x 32 tokens. Nothing yet on a real model, on CUDA or
+  with the lab's candle-strata.
+- **What:** engine patch `0011`. The residency runtime setup moves out of `qwen3_moe.rs` into
+  `moe::runtime_from_environment`, shared with Qwen3-Next, the model `qwen35moe` GGUFs load through; its
+  `SparseMoeBlock` builds routed experts with `MoEExperts::new_resident` (shared expert unchanged); the
+  pipeline gate accepts `Qwen3NextForCausalLM`; `Qwen3NextLoader` drops the routed stacks from mapped
+  layer sizes under residency, as `0007` does for Qwen3 MoE.
+- **Gates (32 x 32, `run_e2e.py`):** `per-route`, `grouped` and `gnostral` pass parity, self-reproduction
+  and pinned placement on every run, and their references are identical in tokens and in every top-2
+  logprob. Qwen3 MoE is unchanged: the `0010` and `0011` builds give identical captures under residency.
+- **Speed (4 prompts x 32 tokens, 3 interleaved rounds, same binary):**
+
+  | Experts | Path | Decode tok/s | TTFT ms | Minor faults |
+  | --- | --- | --- | --- | --- |
+  | 16 | plain | 23.8-25.5 | 1815-1965 | 2.57 M |
+  | 16 | residency, candle kernel | 268-276 | 53-57 | 20 k |
+  | 16 | residency, gnostral kernel | 189-216 | 44-52 | 22-24 k |
+  | 64 | plain | 3.7 | 2211-2376 | 15.25 M |
+  | 64 | residency, candle kernel | 260-301 | 64-70 | 27 k |
+  | 64 | residency, gnostral kernel | 193-199 | 53-60 | 28 k |
+
+  Residency cost no longer grows with the number of experts (16 and 64 overlap). The gnostral kernel
+  is slower than candle's on this tiny model, as in F-017; that says nothing about real geometries.
+- **Numerics:** residency rounds routed-expert inputs to Q8_K, the plain path keeps them in F32, so the
+  two are not token-identical; F-039 explains the difference. Decode against prefill: 1 token of 192
+  differs, at a 0.0024-nat tie; the decode token's logprob moves by a median of 1.5e-6 as on the plain
+  path, but 8 of 192 steps move by 1e-3 to 0.02 (plain: none above 8e-5). INFERRED: Q8_K rounding
+  flips when tiny float differences cross a rounding boundary.
+- **Limits:** F32 expert stacks are refused at load (`expert projection has no raw QTensor`), as for
+  Qwen3 MoE; the gnostral kernel needs Q2_K/Q3_K; which types the owner's target uses is L-002's
+  question; the CUDA side of residency is untested for this model.
+- **Next:** L-005 on the lab: the owner's target model with residency, gates first.
+- **Evidence:** `evidence/runs/qwen35moe-residency-cpu-20261025/summary.json` and receipts.
+
+### F-039 · 2026-10-25 · llama.cpp's deviation in F-028 is Q8_K activation rounding, not a defect
+
+- **Class:** SUPPORTED (an emulation reproduces it for two engines; what remains is near-ties); PROCESS
+  for the correction of how F-028 read it.
+- **What:** F-028 judged engines against a reference with float activations. llama.cpp's CPU k-quant
+  matmul, candle's, and so the engine's residency path, round each routed-expert input to Q8_K (one
+  8-bit value per element, one scale per 256). With the reference rounding the same way
+  (`qwen35moe_reference.py --expert-activations q8_k`, ggml's `quantize_row_q8_K_ref`):
+
+  | Capture | Float reference: argmax differs, median gap | Q8_K reference: argmax differs, median gap |
+  | --- | --- | --- |
+  | llama.cpp (F-028) | 82 of 1024, 0.11 | 2, 0.0011 |
+  | engine residency (F-038) | 79, 0.107 | 10, 0.00054 |
+  | engine plain path (F-028) | 0, 3.1e-5 | 49, 0.078 |
+
+  Of the residency path's 10 remaining differences, 9 are steps where its own top two tokens are within
+  0.05 nat. Candle rounds halves away from zero and ggml to even; they differ only at exact ties.
+- **Reading:** on this random fixture, Q8_K rounding moves about 8% of greedy choices. Both
+  quantized-activation engines compute what they claim to; F-028's "llama.cpp does not match on k-quant
+  experts" holds for the float definition only, and is a property of the activation format our residency
+  path shares. The plain path matched because it dequantises every expert (F-036).
+- **Not known:** how much Q8_K rounding moves a trained model; random weights are likely more sensitive.
+- **Consequence:** residency lanes and llama.cpp compare like for like in activation format; the plain
+  path is not their quality reference. The float64 reference judges both formats.
+- **Evidence:** `evidence/runs/qwen35moe-residency-cpu-20261025/judgments/`.
 
 ## Evidence not yet in the repository
 

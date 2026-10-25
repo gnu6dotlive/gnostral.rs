@@ -1,0 +1,425 @@
+From 8a529f53fabd2186d673cdcf1bf834a5edba5227 Mon Sep 17 00:00:00 2001
+From: Jordan <dev.in@gnu6.live>
+Date: Sun, 25 Oct 2026 01:13:51 +0000
+Subject: [PATCH] feat(residency): expert residency for Qwen3-Next and
+ qwen35moe GGUF
+
+The residency runtime setup moves from qwen3_moe into
+moe::runtime_from_environment, shared by Qwen3 MoE and Qwen3-Next (the model
+qwen35moe GGUFs load through). SparseMoeBlock builds its routed experts with
+MoEExperts::new_resident when residency is requested; the shared expert and
+its gate are unchanged. The normal pipeline's gate accepts
+Qwen3NextForCausalLM, and Qwen3NextLoader drops the routed stacks from the
+mapped layer sizes under residency, as Qwen3MoELoader does since 0007.
+
+Qwen3 MoE behaviour is unchanged: residency captures are byte-identical to
+the 0010 build on the synthetic qwen3moe fixture.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_016D4Xz7aLLGu873oZNF6vk4
+---
+ mistralrs-core/src/models/qwen3_moe.rs        | 52 ++++------------
+ mistralrs-core/src/models/qwen3_next.rs       | 45 ++++++++++++++
+ mistralrs-core/src/moe/experts/residency.rs   | 46 +++++++++++++-
+ mistralrs-core/src/moe/mod.rs                 |  3 +-
+ .../src/pipeline/loaders/normal_loaders.rs    | 60 ++++++++++++++++---
+ mistralrs-core/src/pipeline/normal.rs         | 18 +++---
+ 6 files changed, 164 insertions(+), 60 deletions(-)
+
+diff --git a/mistralrs-core/src/models/qwen3_moe.rs b/mistralrs-core/src/models/qwen3_moe.rs
+index ed3989f..e3156e8 100644
+--- a/mistralrs-core/src/models/qwen3_moe.rs
++++ b/mistralrs-core/src/models/qwen3_moe.rs
+@@ -11,9 +11,7 @@ use serde::{Deserialize, Serialize};
+ use std::{collections::HashMap, sync::Arc};
+ 
+ #[cfg(feature = "gnostral-expert-residency")]
+-use crate::moe::{
+-    ExpertResidencyRequest, ExpertResidencyRuntime, CPU_RESIDENCY_ENV, PROFILE_OUT_ENV,
+-};
++use crate::moe::ExpertResidencyRuntime;
+ use crate::moe::{MoEExperts, MoEExpertsConfig};
+ use crate::{
+     amoe::AnyMoeBaseModelMixin,
+@@ -621,44 +619,16 @@ impl Model {
+         attention_mechanism: AttentionImplementation,
+     ) -> Result<Self> {
+         #[cfg(feature = "gnostral-expert-residency")]
+-        let residency = if let Some(request) = ExpertResidencyRequest::from_environment()? {
+-            use sha2::{Digest, Sha256};
+-            let cpu_opt_in = std::env::var(CPU_RESIDENCY_ENV).is_ok_and(|v| v == "1");
+-            let device = &normal_loading_metadata.real_device;
+-            if !(device.is_cuda() || (device.is_cpu() && cpu_opt_in))
+-                || normal_loading_metadata.loading_isq
+-                || cfg.decoder_sparse_step != 1
+-                || !cfg.mlp_only_layers.is_empty()
+-                || cfg.quantization_config.is_some()
+-            {
+-                candle_core::bail!("native residency pilot requires unsharded CUDA (or GNOSTRAL_EXPERT_RESIDENCY_CPU=1 on CPU) Qwen3 GGUF with every layer using standard experts");
+-            }
+-            let source = vb_m.weight_source().ok_or_else(|| {
+-                candle_core::Error::Msg("native residency requires GGUF source identity".into())
+-            })?;
+-            let bytes = source.single_file_gguf_bytes().ok_or_else(|| {
+-                candle_core::Error::Msg(
+-                    "native residency pilot requires a single-file GGUF source".into(),
+-                )
+-            })?;
+-            let hash = format!("{:x}", Sha256::digest(bytes));
+-            let layers = u32::try_from(cfg.num_hidden_layers)
+-                .map_err(|_| candle_core::Error::Msg("layer count overflow".into()))?;
+-            let experts = u32::try_from(cfg.num_experts)
+-                .map_err(|_| candle_core::Error::Msg("expert count overflow".into()))?;
+-            let mut runtime = ExpertResidencyRuntime::new(
+-                request.validate(&hash, layers, experts)?,
+-                layers,
+-                experts,
+-                normal_loading_metadata.real_device.clone(),
+-            )?;
+-            if let Some(path) = std::env::var_os(PROFILE_OUT_ENV) {
+-                runtime = runtime.with_profile_out(path.into(), hash.clone());
+-            }
+-            Some(Arc::new(runtime))
+-        } else {
+-            None
+-        };
++        let residency = crate::moe::runtime_from_environment(
++            &vb_m,
++            &normal_loading_metadata.real_device,
++            normal_loading_metadata.loading_isq,
++            cfg.decoder_sparse_step == 1
++                && cfg.mlp_only_layers.is_empty()
++                && cfg.quantization_config.is_none(),
++            cfg.num_hidden_layers,
++            cfg.num_experts,
++        )?;
+         if let Some(ref quant_cfg) = &cfg.quantization_config {
+             tracing::info!(
+                 "Using {} quantization: {}.",
+diff --git a/mistralrs-core/src/models/qwen3_next.rs b/mistralrs-core/src/models/qwen3_next.rs
+index a466726..cfb5769 100644
+--- a/mistralrs-core/src/models/qwen3_next.rs
++++ b/mistralrs-core/src/models/qwen3_next.rs
+@@ -18,6 +18,8 @@ use crate::gdn::{
+     try_forward_grouped_packed_gdn, GatedDeltaNet, GdnConfig, GdnInputProjectionKind,
+     GdnLayerCache, GdnStateDType, GdnVHeadLayout, PackedGdnLayout,
+ };
++#[cfg(feature = "gnostral-expert-residency")]
++use crate::moe::ExpertResidencyRuntime;
+ use crate::{
+     amoe::AnyMoeBaseModelMixin,
+     attention::{AttentionMask, SdpaParams},
+@@ -402,6 +404,9 @@ impl SparseMoeBlock {
+         loading_isq: bool,
+         comm: &Arc<mistralrs_quant::Comm>,
+         real_device: Device,
++        #[cfg(feature = "gnostral-expert-residency")] residency: Option<
++            &Arc<ExpertResidencyRuntime>,
++        >,
+     ) -> Result<Self> {
+         let layer_device = mapper
+             .device_for(layer_idx, false)
+@@ -423,6 +428,31 @@ impl SparseMoeBlock {
+             expert_proj_names: crate::moe::ExpertProjNames::DEFAULT,
+         };
+ 
++        #[cfg(feature = "gnostral-expert-residency")]
++        let experts = if let Some(cache) = residency {
++            MoEExperts::new_resident(
++                &moe_cfg,
++                vb.clone(),
++                u32::try_from(layer_idx)
++                    .map_err(|_| candle_core::Error::Msg("expert layer index overflow".into()))?,
++                layer_device.clone(),
++                comm,
++                loading_isq,
++                cfg.hidden_act,
++                cache.clone(),
++            )?
++        } else {
++            MoEExperts::new(
++                &moe_cfg,
++                vb.clone(),
++                layer_device.clone(),
++                comm,
++                loading_isq,
++                &cfg.quantization_config,
++                cfg.hidden_act,
++            )?
++        };
++        #[cfg(not(feature = "gnostral-expert-residency"))]
+         let experts = MoEExperts::new(
+             &moe_cfg,
+             vb.clone(),
+@@ -746,6 +776,15 @@ impl Model {
+         if !cfg.mlp_only_layers.is_empty() {
+             candle_core::bail!("Qwen3Next `mlp_only_layers` is not implemented yet in mistral.rs.");
+         }
++        #[cfg(feature = "gnostral-expert-residency")]
++        let residency = crate::moe::runtime_from_environment(
++            &vb_m,
++            &normal_loading_metadata.real_device,
++            normal_loading_metadata.loading_isq,
++            cfg.decoder_sparse_step == 1 && cfg.quantization_config.is_none(),
++            cfg.num_hidden_layers,
++            cfg.num_experts,
++        )?;
+ 
+         let embed_tokens = embedding_with_legacy_tied_uqff(
+             cfg.vocab_size,
+@@ -886,6 +925,8 @@ impl Model {
+                 normal_loading_metadata.loading_isq,
+                 &comm,
+                 normal_loading_metadata.real_device.clone(),
++                #[cfg(feature = "gnostral-expert-residency")]
++                residency.as_ref(),
+             )?;
+ 
+             Ok(DecoderLayer {
+@@ -895,6 +936,10 @@ impl Model {
+                 moe,
+             })
+         })?;
++        #[cfg(feature = "gnostral-expert-residency")]
++        if let Some(cache) = &residency {
++            cache.finish_loading()?;
++        }
+ 
+         // Create pipeline hybrid cache config
+         let pipeline_layer_types: Vec<HybridLayerType> = layer_types
+diff --git a/mistralrs-core/src/moe/experts/residency.rs b/mistralrs-core/src/moe/experts/residency.rs
+index d1b988e..ce1cace 100644
+--- a/mistralrs-core/src/moe/experts/residency.rs
++++ b/mistralrs-core/src/moe/experts/residency.rs
+@@ -1,4 +1,4 @@
+-//! Opt-in native expert residency. Configuration is read once per Qwen3 model.
++//! Opt-in native expert residency. Configuration is read once per MoE model.
+ use super::residency_observation::{ResidencyCounters, ResidencyObservation};
+ use candle_core::Result;
+ use gnostral_expert_residency::ExpertKey;
+@@ -944,6 +944,50 @@ pub(crate) fn requested_cache_bytes() -> Option<u64> {
+     budget.parse::<u64>().ok().filter(|&b| b > 0)
+ }
+ 
++/// The model's residency runtime when the environment requests one, else `None`.
++///
++/// `standard_experts` is the caller's statement that every layer carries routed GGUF expert stacks
++/// with no other quantization config; the model and its tensor names are otherwise generic.
++pub(crate) fn runtime_from_environment(
++    vb_m: &mistralrs_quant::ShardedVarBuilder,
++    real_device: &candle_core::Device,
++    loading_isq: bool,
++    standard_experts: bool,
++    layers: usize,
++    experts: usize,
++) -> Result<Option<std::sync::Arc<ExpertResidencyRuntime>>> {
++    use sha2::{Digest, Sha256};
++    let Some(request) = ExpertResidencyRequest::from_environment()? else {
++        return Ok(None);
++    };
++    let cpu_opt_in = std::env::var(CPU_RESIDENCY_ENV).is_ok_and(|v| v == "1");
++    if !(real_device.is_cuda() || (real_device.is_cpu() && cpu_opt_in))
++        || loading_isq
++        || !standard_experts
++    {
++        candle_core::bail!("native residency pilot requires unsharded CUDA (or GNOSTRAL_EXPERT_RESIDENCY_CPU=1 on CPU) GGUF with every layer using standard experts");
++    }
++    let source = vb_m
++        .weight_source()
++        .ok_or_else(|| error("native residency requires GGUF source identity"))?;
++    let bytes = source
++        .single_file_gguf_bytes()
++        .ok_or_else(|| error("native residency pilot requires a single-file GGUF source"))?;
++    let hash = format!("{:x}", Sha256::digest(bytes));
++    let layers = u32::try_from(layers).map_err(|_| error("layer count overflow"))?;
++    let experts = u32::try_from(experts).map_err(|_| error("expert count overflow"))?;
++    let mut runtime = ExpertResidencyRuntime::new(
++        request.validate(&hash, layers, experts)?,
++        layers,
++        experts,
++        real_device.clone(),
++    )?;
++    if let Some(path) = std::env::var_os(PROFILE_OUT_ENV) {
++        runtime = runtime.with_profile_out(path.into(), hash);
++    }
++    Ok(Some(std::sync::Arc::new(runtime)))
++}
++
+ pub(crate) struct ExpertResidencyRequest {
+     budget: String,
+     profile: String,
+diff --git a/mistralrs-core/src/moe/mod.rs b/mistralrs-core/src/moe/mod.rs
+index 55e5c9d..70727d5 100644
+--- a/mistralrs-core/src/moe/mod.rs
++++ b/mistralrs-core/src/moe/mod.rs
+@@ -15,6 +15,5 @@ pub fn shard(dim: usize, rank: usize, world_size: usize) -> Shard {
+ 
+ #[cfg(feature = "gnostral-expert-residency")]
+ pub(crate) use experts::residency::{
+-    requested_cache_bytes, ExpertResidencyRequest, ExpertResidencyRuntime, CPU_RESIDENCY_ENV,
+-    PROFILE_OUT_ENV,
++    requested_cache_bytes, runtime_from_environment, ExpertResidencyRequest, ExpertResidencyRuntime,
+ };
+diff --git a/mistralrs-core/src/pipeline/loaders/normal_loaders.rs b/mistralrs-core/src/pipeline/loaders/normal_loaders.rs
+index b7151f6..bf8201b 100644
+--- a/mistralrs-core/src/pipeline/loaders/normal_loaders.rs
++++ b/mistralrs-core/src/pipeline/loaders/normal_loaders.rs
+@@ -4871,8 +4871,8 @@ impl IsqModelLoader for Qwen3MoELoader {
+     }
+ }
+ 
+-/// Expert cache bytes when Qwen3 MoE expert residency is requested, else 0.
+-fn qwen3_moe_residency_cache_bytes() -> usize {
++/// Expert cache bytes when MoE expert residency is requested, else 0.
++fn expert_residency_cache_bytes() -> usize {
+     #[cfg(feature = "gnostral-expert-residency")]
+     if let Some(bytes) = crate::moe::requested_cache_bytes() {
+         return usize::try_from(bytes).unwrap_or(usize::MAX);
+@@ -4938,7 +4938,7 @@ impl DeviceMappedModelLoader for Qwen3MoELoader {
+             let norm = cfg.hidden_size;
+             embed_tokens + lm_head + norm
+         };
+-        Ok(elems * dtype.size_in_bytes() + qwen3_moe_residency_cache_bytes())
++        Ok(elems * dtype.size_in_bytes() + expert_residency_cache_bytes())
+     }
+ 
+     fn layer_sizes_in_bytes(
+@@ -4977,7 +4977,7 @@ impl DeviceMappedModelLoader for Qwen3MoELoader {
+                 };
+                 // Under expert residency the stacks load host-side; the device holds only the
+                 // cache budget, reserved once in the non-mapped size.
+-                if qwen3_moe_residency_cache_bytes() > 0 {
++                if expert_residency_cache_bytes() > 0 {
+                     gate_size
+                 } else {
+                     expert_size * cfg.num_experts + gate_size
+@@ -5855,7 +5855,7 @@ impl DeviceMappedModelLoader for Qwen3NextLoader {
+             let norm = cfg.hidden_size;
+             embed_tokens + lm_head + norm
+         };
+-        Ok(elems * dtype.size_in_bytes())
++        Ok(elems * dtype.size_in_bytes() + expert_residency_cache_bytes())
+     }
+ 
+     fn layer_sizes_in_bytes(
+@@ -5907,8 +5907,13 @@ impl DeviceMappedModelLoader for Qwen3NextLoader {
+             let moe_gate = cfg.hidden_size * cfg.num_experts;
+             let shared_expert =
+                 3 * cfg.hidden_size * cfg.shared_expert_intermediate_size / weight_pack_factor;
+-            let routed_experts = cfg.num_experts * 3 * cfg.hidden_size * cfg.moe_intermediate_size
+-                / weight_pack_factor;
++            // Resident stacks load host-side; the device budget is in the non-mapped size.
++            let routed_experts = if expert_residency_cache_bytes() > 0 {
++                0
++            } else {
++                cfg.num_experts * 3 * cfg.hidden_size * cfg.moe_intermediate_size
++                    / weight_pack_factor
++            };
+ 
+             let per_layer_elems = input_layernorm
+                 + post_attention_layernorm
+@@ -7354,6 +7359,8 @@ mod qwen3_moe_residency_sizing_tests {
+     use super::*;
+ 
+     const CACHE_ENV: &str = "GNOSTRAL_EXPERT_CACHE_BYTES";
++    // Both tests set CACHE_ENV; no other test in this crate reads it.
++    static ENV_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+ 
+     #[test]
+     fn residency_drops_expert_stacks_from_native_gguf_layer_sizes() -> Result<()> {
+@@ -7375,13 +7382,13 @@ mod qwen3_moe_residency_sizing_tests {
+         };
+         let config = serde_json::to_string(&cfg)?;
+         let loader = Qwen3MoELoader;
++        let _env = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+         let sizes = || -> Result<(Vec<usize>, usize)> {
+             Ok((
+                 loader.layer_sizes_in_bytes(&config, DType::BF16, 1, None)?,
+                 loader.non_mapped_size_in_bytes(&config, DType::BF16, 1, None, None)?,
+             ))
+         };
+-        // No other test in this crate reads this variable.
+         std::env::remove_var(CACHE_ENV);
+         let (dense, dense_rest) = sizes()?;
+         std::env::set_var(CACHE_ENV, "4096");
+@@ -7399,4 +7406,41 @@ mod qwen3_moe_residency_sizing_tests {
+         assert!(res.iter().sum::<usize>() < 2 << 30);
+         Ok(())
+     }
++
++    #[test]
++    fn residency_drops_expert_stacks_from_qwen3_next_layer_sizes() -> Result<()> {
++        // Qwen3-Next-80B-A3B text geometry; qwen35moe GGUFs load through this loader too.
++        let config = serde_json::json!({
++            "vocab_size": 151_936, "hidden_size": 2048, "intermediate_size": 5120,
++            "num_hidden_layers": 48, "num_attention_heads": 16, "num_key_value_heads": 2,
++            "hidden_act": "silu", "max_position_embeddings": 4096, "head_dim": 256,
++            "linear_key_head_dim": 128, "linear_value_head_dim": 128, "linear_num_key_heads": 16,
++            "linear_num_value_heads": 32, "moe_intermediate_size": 512,
++            "shared_expert_intermediate_size": 512, "num_experts_per_tok": 10, "num_experts": 512,
++            "quantization_config": null
++        })
++        .to_string();
++        let loader = Qwen3NextLoader;
++        let _env = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
++        let sizes = || -> Result<(Vec<usize>, usize)> {
++            Ok((
++                loader.layer_sizes_in_bytes(&config, DType::BF16, 1, None)?,
++                loader.non_mapped_size_in_bytes(&config, DType::BF16, 1, None, None)?,
++            ))
++        };
++        std::env::remove_var(CACHE_ENV);
++        let (dense, dense_rest) = sizes()?;
++        std::env::set_var(CACHE_ENV, "4096");
++        let resident = sizes();
++        std::env::remove_var(CACHE_ENV);
++        let (res, res_rest) = resident?;
++
++        let stacks = 512 * 3 * 2048 * 512 * DType::BF16.size_in_bytes();
++        assert_eq!(dense.len(), 48);
++        for (d, r) in dense.iter().zip(&res) {
++            assert_eq!(d - r, stacks);
++        }
++        assert_eq!(res_rest, dense_rest + 4096);
++        Ok(())
++    }
+ }
+diff --git a/mistralrs-core/src/pipeline/normal.rs b/mistralrs-core/src/pipeline/normal.rs
+index 7dbb76c..cd9f055 100644
+--- a/mistralrs-core/src/pipeline/normal.rs
++++ b/mistralrs-core/src/pipeline/normal.rs
+@@ -652,13 +652,15 @@ impl Loader for NormalLoader {
+         #[cfg(feature = "gnostral-expert-residency")]
+         {
+             let identity: serde_json::Value = serde_json::from_str(&config)?;
+-            let is_qwen3_moe = identity
+-                .get("architectures")
+-                .and_then(serde_json::Value::as_array)
+-                .and_then(|a| a.first())
+-                .and_then(serde_json::Value::as_str)
+-                == Some("Qwen3MoeForCausalLM");
+-            if (!is_qwen3_moe
++            let resident_architecture = matches!(
++                identity
++                    .get("architectures")
++                    .and_then(serde_json::Value::as_array)
++                    .and_then(|a| a.first())
++                    .and_then(serde_json::Value::as_str),
++                Some("Qwen3MoeForCausalLM" | "Qwen3NextForCausalLM")
++            );
++            if (!resident_architecture
+                 || self.prepared_source.is_none()
+                 || self.lora_adapters.is_some()
+                 || self.xlora_model_id.is_some()
+@@ -666,7 +668,7 @@ impl Loader for NormalLoader {
+                 || self.config.from_uqff.is_some())
+                 && crate::moe::ExpertResidencyRequest::from_environment()?.is_some()
+             {
+-                anyhow::bail!("native expert residency pilot only supports unadapted single-file Qwen3 MoE GGUF without ISQ");
++                anyhow::bail!("native expert residency pilot only supports unadapted single-file Qwen3 MoE or Qwen3-Next/Qwen3.5 MoE GGUF without ISQ");
+             }
+         }
+         let config = if self.config.from_uqff.is_some() {
+-- 
+2.43.0
+
