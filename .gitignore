@@ -34,3 +34,5 @@ __pycache__/
 /vendor/
 /evidence/logs/*.tar.gz
 /.target/
+# Lab build directories (engine, kernels, flash-attn targets).
+/.ci-cache/
