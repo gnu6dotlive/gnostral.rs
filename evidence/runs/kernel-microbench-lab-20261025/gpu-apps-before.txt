@@ -1,0 +1,4 @@
+2553, /app/llama-server, 1342 MiB
+8045, /opt/google/chrome-beta/chrome --type=gpu-process --gpu-recent-crash-count
+197813, ~/.local/bin/tty7-app, 88 MiB
+2529033, ~/.local/lib/gnosix/gnos-ux-scene, 607 MiB

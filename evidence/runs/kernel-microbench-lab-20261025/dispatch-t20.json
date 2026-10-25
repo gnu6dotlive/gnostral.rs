@@ -1,0 +1,1 @@
+{"bench":"pool_dispatch","indicative_only":true,"threads":20,"tasks":80,"samples_ns_per_dispatch":[22341, 24287, 23365, 23523, 20825],"median_ns_per_dispatch":23365}

@@ -1,0 +1,1 @@
+{"bench":"read_bandwidth","indicative_only":true,"threads":8,"bytes":1073741824,"samples_gb_per_s":[59.7, 57.85, 59.98, 58.62, 56.37],"median_gb_per_s":58.62,"checksum":54043195125792768}

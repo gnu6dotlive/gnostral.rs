@@ -1,0 +1,1 @@
+{"bench":"grouped_expert_ffn","indicative_only":true,"hidden":2048,"inter":768,"groups":8,"rows_per_group":1,"pool_experts":128,"isa":"avx2","numerics":"candle","threads":8,"warmup":1,"samples_ns":[500157, 473170, 613760, 451200, 455698],"median_ns":473170,"weight_bytes_per_iteration":13664256,"median_gb_per_s":28.88,"checksum":122720.29210805893}

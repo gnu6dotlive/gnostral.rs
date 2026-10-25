@@ -1,0 +1,1 @@
+{"bench":"row_dot","indicative_only":true,"isa":"avx2","numerics":"native","q2k_rows":768,"q2k_blocks_per_row":8,"q2k_ps_per_block":[13257, 13255, 13259, 16154, 20195],"q2k_median_ps_per_block":13259,"q3k_rows":2048,"q3k_blocks_per_row":3,"q3k_ps_per_block":[21261, 21268, 21268, 21265, 21274],"q3k_median_ps_per_block":21268}
