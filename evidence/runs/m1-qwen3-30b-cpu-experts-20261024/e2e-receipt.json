@@ -1,0 +1,86 @@
+{
+  "schema": "gnostral.rs/synthetic-moe-e2e-device/1",
+  "device": "cuda",
+  "model": {
+    "path": "/mnt/models/active/gnostral/Qwen3-30B-A3B-Q2_K.gguf",
+    "layers": 48,
+    "experts": 128,
+    "hidden": 2048,
+    "moe_inter": 768
+  },
+  "expert_bytes_total": 10494148608,
+  "max_tokens": 32,
+  "repetitions": 5,
+  "note": "synthetic noise model: proves plumbing, not engine performance",
+  "configs": [
+    {
+      "config": "cpu-experts",
+      "cache_bytes": 1,
+      "profile": "~/Projects/gnostral.rs/evidence/runs/m1-qwen3-30b-cpu-experts-20261024/profile-empty.json",
+      "bench_exit": 1,
+      "baseline": "per-route",
+      "lanes": {
+        "per-route": {
+          "decode_tok_s": [],
+          "parity": [
+            "UNKNOWN",
+            "UNKNOWN",
+            "UNKNOWN",
+            "UNKNOWN",
+            "UNKNOWN"
+          ],
+          "device": [],
+          "vram_mib": [],
+          "failed": [
+            "NONZERO",
+            "NONZERO",
+            "NONZERO",
+            "NONZERO",
+            "NONZERO"
+          ],
+          "verdict_vs_baseline": "baseline"
+        },
+        "grouped": {
+          "decode_tok_s": [],
+          "parity": [
+            "UNKNOWN",
+            "UNKNOWN",
+            "UNKNOWN",
+            "UNKNOWN",
+            "UNKNOWN"
+          ],
+          "device": [],
+          "vram_mib": [],
+          "failed": [
+            "NONZERO",
+            "NONZERO",
+            "NONZERO",
+            "NONZERO",
+            "NONZERO"
+          ],
+          "verdict_vs_baseline": "UNKNOWN"
+        },
+        "gnostral": {
+          "decode_tok_s": [],
+          "parity": [
+            "UNKNOWN",
+            "UNKNOWN",
+            "UNKNOWN",
+            "UNKNOWN",
+            "UNKNOWN"
+          ],
+          "device": [],
+          "vram_mib": [],
+          "failed": [
+            "NONZERO",
+            "NONZERO",
+            "NONZERO",
+            "NONZERO",
+            "NONZERO"
+          ],
+          "verdict_vs_baseline": "UNKNOWN"
+        }
+      }
+    }
+  ]
+}

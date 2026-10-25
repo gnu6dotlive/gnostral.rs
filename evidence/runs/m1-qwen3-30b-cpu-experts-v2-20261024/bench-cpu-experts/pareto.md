@@ -1,0 +1,2 @@
+comparison refused:
+- llama.cpp: PLACEMENT: plan pins "llama.cpp offloaded=49/49 cpu_moe=on"; warmup 0 reported llama.cpp offloaded=none cpu_moe=on; measured 0 reported llama.cpp offloaded=none cpu_moe=on; measured 1 reported llama.cpp offloaded=none cpu_moe=on; measured 2 reported llama.cpp offloaded=none cpu_moe=on; measured 3 reported llama.cpp offloaded=none cpu_moe=on; measured 4 reported llama.cpp offloaded=none cpu_moe=on
