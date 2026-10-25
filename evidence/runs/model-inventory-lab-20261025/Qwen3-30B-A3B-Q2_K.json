@@ -1,0 +1,139 @@
+{
+  "schema": "gnostral.gguf-inventory/1",
+  "files": [
+    "/mnt/models/active/gnostral/Qwen3-30B-A3B-Q2_K.gguf"
+  ],
+  "architecture": "qwen3moe",
+  "name": "Qwen3-30B-A3B",
+  "hyperparameters": {
+    "qwen3moe.attention.head_count": 32,
+    "qwen3moe.attention.head_count_kv": 4,
+    "qwen3moe.attention.key_length": 128,
+    "qwen3moe.attention.layer_norm_rms_epsilon": 9.999999974752427e-07,
+    "qwen3moe.attention.value_length": 128,
+    "qwen3moe.block_count": 48,
+    "qwen3moe.context_length": 40960,
+    "qwen3moe.embedding_length": 2048,
+    "qwen3moe.expert_count": 128,
+    "qwen3moe.expert_feed_forward_length": 768,
+    "qwen3moe.expert_used_count": 8,
+    "qwen3moe.feed_forward_length": 6144,
+    "qwen3moe.rope.freq_base": 1000000.0
+  },
+  "tensors": 579,
+  "bytes_by_class": {
+    "attention": {
+      "Q2_K": {
+        "tensors": 96,
+        "bytes": 148635648
+      },
+      "Q3_K": {
+        "tensors": 48,
+        "bytes": 173015040
+      },
+      "Q4_K": {
+        "tensors": 48,
+        "bytes": 28311552
+      }
+    },
+    "embeddings_and_output": {
+      "Q2_K": {
+        "tensors": 1,
+        "bytes": 102100992
+      },
+      "Q6_K": {
+        "tensors": 1,
+        "bytes": 255252480
+      }
+    },
+    "norms": {
+      "F32": {
+        "tensors": 193,
+        "bytes": 843776
+      }
+    },
+    "routed_experts": {
+      "Q2_K": {
+        "tensors": 96,
+        "bytes": 6341787648
+      },
+      "Q3_K": {
+        "tensors": 48,
+        "bytes": 4152360960
+      }
+    },
+    "router": {
+      "F32": {
+        "tensors": 48,
+        "bytes": 50331648
+      }
+    }
+  },
+  "routed_expert_layers": 48,
+  "routed_expert_paths": {
+    "gnostral_kernel": [
+      0,
+      1,
+      2,
+      3,
+      4,
+      5,
+      6,
+      7,
+      8,
+      9,
+      10,
+      11,
+      12,
+      13,
+      14,
+      15,
+      16,
+      17,
+      18,
+      19,
+      20,
+      21,
+      22,
+      23,
+      24,
+      25,
+      26,
+      27,
+      28,
+      29,
+      30,
+      31,
+      32,
+      33,
+      34,
+      35,
+      36,
+      37,
+      38,
+      39,
+      40,
+      41,
+      42,
+      43,
+      44,
+      45,
+      46,
+      47
+    ]
+  },
+  "types_refused_at_load": [],
+  "unknown_types": [],
+  "architecture_known_to_engine": true,
+  "expert_residency_architecture": true,
+  "support_sources": {
+    "architectures": "vendor/mistralrs-strata/mistralrs-core/src/gguf/normal_registry.rs CanonicalGgufArchitecture",
+    "engine_load": "vendor/mistralrs-strata/mistralrs-quant/src/gguf/archive.rs GgufDType::candle_dtype (and weight_source.rs test unsupported_dtypes_are_rejected_at_construction)",
+    "mxfp4_experts": "vendor/mistralrs-strata/mistralrs-core/src/gguf/normal_bindings.rs bind_block_tensor (gpt-oss routed experts only)",
+    "residency_architecture": "vendor/mistralrs-strata/mistralrs-core/src/pipeline/normal.rs residency pilot gate (Qwen3MoeForCausalLM, and with patch 0011 Qwen3NextForCausalLM, from a GGUF, no adapters, no ISQ)",
+    "residency": "vendor/mistralrs-strata/mistralrs-core/src/moe/experts/residency.rs expert stack dtype check",
+    "gnostral_kernel": "vendor/mistralrs-strata/mistralrs-core/src/moe/experts/residency.rs gnostral_host_ffn",
+    "native_sizing": "patches/engine-program/0007 (Qwen3MoELoader::layer_sizes_in_bytes) and 0011 (Qwen3NextLoader)"
+  },
+  "verdict": "GNOSTRAL_KERNEL: every expert layer runs on the Q-029 kernels"
+}

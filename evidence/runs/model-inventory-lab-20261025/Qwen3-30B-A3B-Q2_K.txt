@@ -1,0 +1,8 @@
+architecture qwen3moe  name Qwen3-30B-A3B  tensors 579
+  attention                Q2_K 96x 0.14 GiB, Q3_K 48x 0.16 GiB, Q4_K 48x 0.03 GiB
+  embeddings_and_output    Q2_K 1x 0.10 GiB, Q6_K 1x 0.24 GiB
+  norms                    F32 193x 0.00 GiB
+  routed_experts           Q2_K 96x 5.91 GiB, Q3_K 48x 3.87 GiB
+  router                   F32 48x 0.05 GiB
+  experts gnostral_kernel: 48 layers
+verdict GNOSTRAL_KERNEL: every expert layer runs on the Q-029 kernels

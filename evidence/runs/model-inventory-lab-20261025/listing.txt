@@ -1,0 +1,4 @@
+total 10994740
+drwx------ 1 tension_atoi tension_atoi          46 Oct  9 23:40 .
+drwxr-xr-x 1 tension_atoi tension_atoi          64 Oct 22 09:58 ..
+-r--r--r-- 1 tension_atoi tension_atoi 11258610240 Oct  9 23:40 Qwen3-30B-A3B-Q2_K.gguf
